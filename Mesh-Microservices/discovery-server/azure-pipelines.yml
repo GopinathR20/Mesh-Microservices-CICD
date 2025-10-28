@@ -1,20 +1,63 @@
-# 3. Azure CLI Deployment (FINAL FIX: Use simplified supported syntax)
-- task: AzureCLI@2
-  displayName: 'Update Azure Container App Image'
-  inputs:
-    azureSubscription: '$(AZURE_SUBSCRIPTION)'
-    scriptType: 'bash'
-    scriptLocation: 'inlineScript'
-    inlineScript: |
-      echo "Starting deployment of $(SERVICE_NAME)..."
-      
-      # FINAL FIX: Use the supported --registry-server flag to tell ACA where to pull from.
-      # The authentication is handled automatically by the Service Principal (Azure-ARM-Manual).
-      
-      az containerapp update \
-        --name $(SERVICE_NAME)-app \
-        --resource-group $(AZURE_RESOURCE_GROUP) \
-        --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
-        --registry-server $(ACR_NAME).azurecr.io 
-      
-      echo "Deployment command sent successfully."
+trigger:
+  branches:
+    include:
+      - main # Use 'main' branch
+  paths:
+    include:
+      - 'Mesh-Microservices/discovery-server/*'
+    exclude:
+      - 'infrastructure/*'
+
+variables:
+  AZURE_RESOURCE_GROUP: 'mesh-project-rg'
+  ACR_NAME: 'meshregistry6a333'
+  SERVICE_NAME: 'discovery-server'
+  IMAGE_TAG: '$(Build.BuildId)'
+  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
+  AZURE_SUBSCRIPTION: 'Azure-ARM-Manual'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  # 1. Maven Build (Sets Java 17)
+  - task: Maven@3
+    displayName: 'Build $(SERVICE_NAME) JAR'
+    inputs:
+      mavenPomFile: 'Mesh-Microservices/discovery-server/pom.xml'
+      goals: 'package'
+      jdkVersionOption: '1.17'
+      jdkArchitectureOption: 'x64'
+
+  # 2. Docker Build and Push
+  - task: Docker@2
+    displayName: 'Build and Push Image to ACR'
+    inputs:
+      command: 'buildAndPush'
+      containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
+      repository: '$(SERVICE_NAME)'
+      dockerfile: 'Mesh-Microservices/discovery-server/Dockerfile'
+      tags: |
+        $(IMAGE_TAG)
+        latest
+
+  # 3. Azure CLI Deployment (FINAL FIX: Explicitly pass ACR credentials)
+  - task: AzureCLI@2
+    displayName: 'Update Azure Container App Image'
+    inputs:
+        azureSubscription: '$(AZURE_SUBSCRIPTION)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          echo "Starting deployment of $(SERVICE_NAME)..."
+
+          # FINAL FIX: Use the supported --registry-server flag to tell ACA where to pull from.
+          # The authentication is handled automatically by the Service Principal (Azure-ARM-Manual).
+
+          az containerapp update \
+            --name $(SERVICE_NAME)-app \
+            --resource-group $(AZURE_RESOURCE_GROUP) \
+            --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
+            --registry-server $(ACR_NAME).azurecr.io 
+
+          echo "Deployment command sent successfully."
