@@ -22,7 +22,7 @@ resource "azurerm_container_app_environment" "aca_env" {
   location            = azurerm_resource_group.rg.location
 }
 
-# 4. Cosmos DB (Optional - remove if not needed, uses free tier if eligible)
+# 4. Cosmos DB (Optional - remove if not needed)
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = lower("mesh-cosmos-db-${random_integer.suffix.result}") # Ensure lowercase
   resource_group_name = azurerm_resource_group.rg.name
@@ -38,7 +38,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     location          = azurerm_resource_group.rg.location
     failover_priority = 0
   }
-  enable_free_tier    = true
+  # enable_free_tier = true <-- Removed this line
 }
 
 # Suffix for unique Cosmos DB naming
