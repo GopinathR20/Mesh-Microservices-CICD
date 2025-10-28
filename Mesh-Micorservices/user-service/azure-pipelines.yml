@@ -1,0 +1,53 @@
+# azure-pipelines.yml Template
+trigger:
+  branches:
+    include:
+      - main # Use 'main' branch
+  paths:
+    include:
+      - 'Mesh-Microservices/user-service/*' # <-- 1. CHANGE THIS PATH
+    exclude:
+      - 'infrastructure/*'
+
+variables:
+  AZURE_RESOURCE_GROUP: 'mesh-project-rg'
+  ACR_NAME: 'meshregistry${substr(md5("mesh-project-rg"), 0, 5)}'
+  SERVICE_NAME: 'user-service' # <-- 2. CHANGE THIS NAME
+  IMAGE_TAG: '$(Build.BuildId)'
+  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your Docker Registry service connection name
+  AZURE_SUBSCRIPTION: 'Azure for Students'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+  - task: Maven@3
+    displayName: 'Build $(SERVICE_NAME) JAR'
+    inputs:
+      mavenPomFile: 'Mesh-Microservices/user-service/pom.xml' # <-- 3. CHANGE THIS PATH
+      goals: 'package'
+
+  - task: Docker@2
+    displayName: 'Build and Push Image to ACR'
+    inputs:
+      command: 'buildAndPush'
+      containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
+      repository: '$(SERVICE_NAME)'
+      dockerfile: 'Mesh-Microservices/user-service/Dockerfile' # <-- 4. CHANGE THIS PATH
+      tags: |
+        $(IMAGE_TAG)
+        latest
+
+  - task: AzureCLI@2
+    displayName: 'Update Azure Container App Image'
+    inputs:
+      azureSubscription: '$(AZURE_SUBSCRIPTION)'
+      scriptType: 'bash'
+      scriptLocation: 'inlineScript'
+      inlineScript: |
+        # This step updates the ACA - requires the app to exist first
+        az containerapp update \
+          --name $(SERVICE_NAME)-app \
+          --resource-group $(AZURE_RESOURCE_GROUP) \
+          --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
+          --yes
