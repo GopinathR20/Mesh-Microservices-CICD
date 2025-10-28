@@ -4,14 +4,14 @@ trigger:
       - main # Use 'main' branch
   paths:
     include:
-      - 'Mesh-Microservices/discovery-server/*' # CHANGE THIS PATH
+      - 'Mesh-Microservices/discovery-server/*'
     exclude:
       - 'infrastructure/*'
 
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
   ACR_NAME: 'meshregistry6a333'
-  SERVICE_NAME: 'discovery-server' # CHANGE THIS NAME
+  SERVICE_NAME: 'discovery-server'
   IMAGE_TAG: '$(Build.BuildId)'
   DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
   AZURE_SUBSCRIPTION: 'Azure-ARM-Manual'
@@ -24,9 +24,9 @@ steps:
   - task: Maven@3
     displayName: 'Build $(SERVICE_NAME) JAR'
     inputs:
-      mavenPomFile: 'Mesh-Microservices/discovery-server/pom.xml' # CHANGE THIS PATH
+      mavenPomFile: 'Mesh-Microservices/discovery-server/pom.xml'
       goals: 'package'
-      jdkVersionOption: '1.17' # Explicitly use Java 17
+      jdkVersionOption: '1.17'
       jdkArchitectureOption: 'x64'
 
   # 2. Docker Build and Push
@@ -36,12 +36,12 @@ steps:
       command: 'buildAndPush'
       containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
       repository: '$(SERVICE_NAME)'
-      dockerfile: 'Mesh-Microservices/discovery-server/Dockerfile' # CHANGE THIS PATH
+      dockerfile: 'Mesh-Microservices/discovery-server/Dockerfile'
       tags: |
         $(IMAGE_TAG)
         latest
 
-  # 3. Azure CLI Deployment
+  # 3. Azure CLI Deployment (FINAL FIX: Explicitly pass ACR credentials)
   - task: AzureCLI@2
     displayName: 'Update Azure Container App Image'
     inputs:
@@ -49,8 +49,17 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # FINAL FIX: Removed the unsupported '--yes' flag
+        # Fetch ACR username and password securely using the Service Principal's credentials
+        ACR_USER=$(az acr credential show -n $(ACR_NAME) --query "username" -o tsv)
+        ACR_PASS=$(az acr credential show -n $(ACR_NAME) --query "passwords[0].value" -o tsv)
+
+        echo "Deploying image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG)"
+
+        # Update the Container App, injecting the credentials so it can pull the image
         az containerapp update \
           --name $(SERVICE_NAME)-app \
           --resource-group $(AZURE_RESOURCE_GROUP) \
-          --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG)
+          --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
+          --registry-login-server $(ACR_NAME).azurecr.io \
+          --registry-username $ACR_USER \
+          --registry-password $ACR_PASS
