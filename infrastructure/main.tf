@@ -139,6 +139,6 @@ resource "azuredevops_build_definition" "pipelines" {
     repo_id               = var.github_repo_id
     branch_name           = var.github_branch_name
     service_connection_id = var.github_connection_id
-    yml_path              = "Mesh-Microservices/${each.key}/azure-pipelines.yml"
+    yml_path = "mesh-microservices/${each.key}/azure-pipelines.yml"
   }
 }
