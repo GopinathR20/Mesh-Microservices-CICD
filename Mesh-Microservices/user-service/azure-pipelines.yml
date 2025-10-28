@@ -10,7 +10,7 @@ trigger:
 
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
-  ACR_NAME: 'meshregistry6a333' # FIX: Hardcode the ACR Name
+  ACR_NAME: 'meshregistry6a333'
   SERVICE_NAME: 'user-service'
   IMAGE_TAG: '$(Build.BuildId)'
   DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
@@ -20,13 +20,6 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - task: JavaToolInstaller@0
-    displayName: 'Use Java 17 for Compilation'
-    inputs:
-      versionSpec: '17'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'Preinstalled'
-
   - task: Maven@3
     displayName: 'Build $(SERVICE_NAME) JAR'
     inputs:
