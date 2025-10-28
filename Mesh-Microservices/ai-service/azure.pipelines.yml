@@ -11,7 +11,7 @@ trigger:
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
   ACR_NAME: 'meshregistry6a333'
-  SERVICE_NAME: 'ai-service'
+  SERVICE_NAME: 'ai-service' # CORRECT SERVICE NAME
   IMAGE_TAG: '$(Build.BuildId)'
   DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
   AZURE_SUBSCRIPTION: 'Azure-ARM-Manual'
@@ -20,7 +20,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  # Assuming AI service is NOT a standard Java service (no Maven step)
+  # Assuming AI service is Python or uses a different build tool
   - task: Docker@2
     displayName: 'Build and Push Image to ACR'
     inputs:
@@ -43,4 +43,4 @@ steps:
           --name $(SERVICE_NAME)-app \
           --resource-group $(AZURE_RESOURCE_GROUP) \
           --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
-          --yes
+          --registry-server $(ACR_NAME).azurecr.io
