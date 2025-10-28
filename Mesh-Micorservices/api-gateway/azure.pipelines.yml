@@ -12,7 +12,7 @@ trigger:
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
   ACR_NAME: 'meshregistry${substr(md5("mesh-project-rg"), 0, 5)}'
-  SERVICE_NAME: 'user-service' # <-- 2. CHANGE THIS NAME
+  SERVICE_NAME: 'api-gateway' # <-- 2. CHANGE THIS NAME
   IMAGE_TAG: '$(Build.BuildId)'
   DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your Docker Registry service connection name
   AZURE_SUBSCRIPTION: 'Azure for Students'
