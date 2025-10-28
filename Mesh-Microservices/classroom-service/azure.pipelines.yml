@@ -15,7 +15,7 @@ variables:
   SERVICE_NAME: 'classroom-service' # <-- 2. CHANGE THIS NAME
   IMAGE_TAG: '$(Build.BuildId)'
   DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your Docker Registry service connection name
-  AZURE_SUBSCRIPTION: 'Azure for Students'
+  AZURE_SUBSCRIPTION: 'Azure-Subscription-Connection'
 
 pool:
   vmImage: 'ubuntu-latest'
