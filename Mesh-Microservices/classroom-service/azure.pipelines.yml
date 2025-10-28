@@ -1,30 +1,36 @@
-# azure-pipelines.yml Template
 trigger:
   branches:
     include:
-      - main # Use 'main' branch
+      - main
   paths:
     include:
-      - 'Mesh-Microservices/classroom-service/*' # <-- 1. CHANGE THIS PATH
+      - 'Mesh-Microservices/classroom-service/*'
     exclude:
       - 'infrastructure/*'
 
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
   ACR_NAME: 'meshregistry${substr(md5("mesh-project-rg"), 0, 5)}'
-  SERVICE_NAME: 'classroom-service' # <-- 2. CHANGE THIS NAME
+  SERVICE_NAME: 'classroom-service'
   IMAGE_TAG: '$(Build.BuildId)'
-  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your Docker Registry service connection name
+  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
   AZURE_SUBSCRIPTION: 'Azure-Subscription-Connection'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
+  - task: JavaToolInstaller@0
+    displayName: 'Use Java 17 for Compilation'
+    inputs:
+      versionSpec: '17'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'Preinstalled'
+
   - task: Maven@3
     displayName: 'Build $(SERVICE_NAME) JAR'
     inputs:
-      mavenPomFile: 'Mesh-Microservices/classroom-service/pom.xml' # <-- 3. CHANGE THIS PATH
+      mavenPomFile: 'Mesh-Microservices/classroom-service/pom.xml'
       goals: 'package'
 
   - task: Docker@2
@@ -33,7 +39,7 @@ steps:
       command: 'buildAndPush'
       containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
       repository: '$(SERVICE_NAME)'
-      dockerfile: 'Mesh-Microservices/classroom-service/Dockerfile' # <-- 4. CHANGE THIS PATH
+      dockerfile: 'Mesh-Microservices/classroom-service/Dockerfile'
       tags: |
         $(IMAGE_TAG)
         latest
@@ -45,7 +51,6 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # This step updates the ACA - requires the app to exist first
         az containerapp update \
           --name $(SERVICE_NAME)-app \
           --resource-group $(AZURE_RESOURCE_GROUP) \

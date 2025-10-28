@@ -1,39 +1,39 @@
-# azure-pipelines.yml Template
 trigger:
   branches:
     include:
-      - main # Use 'main' branch
+      - main
   paths:
     include:
-      - 'Mesh-Microservices/ai-service/*' # <-- 1. CHANGE THIS PATH
+      - 'Mesh-Microservices/ai-service/*'
     exclude:
       - 'infrastructure/*'
 
 variables:
   AZURE_RESOURCE_GROUP: 'mesh-project-rg'
   ACR_NAME: 'meshregistry${substr(md5("mesh-project-rg"), 0, 5)}'
-  SERVICE_NAME: 'ai-service' # <-- 2. CHANGE THIS NAME
+  SERVICE_NAME: 'ai-service'
   IMAGE_TAG: '$(Build.BuildId)'
-  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your Docker Registry service connection name
+  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection'
   AZURE_SUBSCRIPTION: 'Azure-Subscription-Connection'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - task: Maven@3
-    displayName: 'Build $(SERVICE_NAME) JAR'
+  # Setup Python Environment
+  - task: UsePythonVersion@0
+    displayName: 'Use Python 3.10'
     inputs:
-      mavenPomFile: 'Mesh-Microservices/ai-service/pom.xml' # <-- 3. CHANGE THIS PATH
-      goals: 'package'
+      versionSpec: '3.10'
 
+  # Build and Push the Docker image
   - task: Docker@2
     displayName: 'Build and Push Image to ACR'
     inputs:
       command: 'buildAndPush'
       containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
       repository: '$(SERVICE_NAME)'
-      dockerfile: 'Mesh-Microservices/ai-service/Dockerfile' # <-- 4. CHANGE THIS PATH
+      dockerfile: 'Mesh-Microservices/ai-service/Dockerfile'
       tags: |
         $(IMAGE_TAG)
         latest
@@ -45,7 +45,6 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # This step updates the ACA - requires the app to exist first
         az containerapp update \
           --name $(SERVICE_NAME)-app \
           --resource-group $(AZURE_RESOURCE_GROUP) \
