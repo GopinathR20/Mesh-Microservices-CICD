@@ -1,3 +1,4 @@
+# Corrected AI Service Pipeline (Assuming Maven is not used here)
 trigger:
   branches:
     include:
@@ -20,13 +21,7 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  # Setup Python Environment
-  - task: UsePythonVersion@0
-    displayName: 'Use Python 3.10'
-    inputs:
-      versionSpec: '3.10'
-
-  # Build and Push the Docker image
+  # Assuming AI service is Python or uses a different build tool
   - task: Docker@2
     displayName: 'Build and Push Image to ACR'
     inputs:

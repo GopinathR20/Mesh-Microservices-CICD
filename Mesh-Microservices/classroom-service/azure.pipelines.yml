@@ -1,3 +1,4 @@
+# Corrected Classroom Service Pipeline
 trigger:
   branches:
     include:
@@ -20,18 +21,13 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  - task: JavaToolInstaller@0
-    displayName: 'Use Java 17 for Compilation'
-    inputs:
-      versionSpec: '17'
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'Preinstalled'
-
   - task: Maven@3
     displayName: 'Build $(SERVICE_NAME) JAR'
     inputs:
       mavenPomFile: 'Mesh-Microservices/classroom-service/pom.xml'
       goals: 'package'
+      jdkVersionOption: '1.17'
+      jdkArchitectureOption: 'x64'
 
   - task: Docker@2
     displayName: 'Build and Push Image to ACR'

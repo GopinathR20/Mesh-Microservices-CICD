@@ -1,4 +1,4 @@
-# azure-pipelines.yml for Discovery Server (Corrected)
+# Corrected Discovery Server Pipeline
 trigger:
   branches:
     include:
@@ -21,23 +21,15 @@ pool:
   vmImage: 'ubuntu-latest'
 
 steps:
-  # STEP 1: Explicitly install Java 17 to fix the "release version 21 not supported" error
-  - task: JavaToolInstaller@0
-    displayName: 'Use Java 17 for Compilation'
-    inputs:
-      versionSpec: '17' # Ensure Java 17 is used
-      jdkArchitectureOption: 'x64'
-      jdkSourceOption: 'Preinstalled'
-
-  # STEP 2: Build the JAR file
+  # FIX: Set Java 17 directly in the Maven task
   - task: Maven@3
     displayName: 'Build $(SERVICE_NAME) JAR'
     inputs:
       mavenPomFile: 'Mesh-Microservices/discovery-server/pom.xml'
       goals: 'package'
-      # The Java environment is now set by JavaToolInstaller
+      jdkVersionOption: '1.17' # Explicitly use Java 17
+      jdkArchitectureOption: 'x64'
 
-  # STEP 3: Build and Push the Docker image
   - task: Docker@2
     displayName: 'Build and Push Image to ACR'
     inputs:
@@ -49,7 +41,6 @@ steps:
         $(IMAGE_TAG)
         latest
 
-  # STEP 4: Deploy
   - task: AzureCLI@2
     displayName: 'Update Azure Container App Image'
     inputs:
@@ -57,7 +48,6 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        # This step updates the ACA - requires the app to exist first
         az containerapp update \
           --name $(SERVICE_NAME)-app \
           --resource-group $(AZURE_RESOURCE_GROUP) \
