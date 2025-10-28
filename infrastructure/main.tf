@@ -1,53 +1,89 @@
-# infrastructure/main.tf (Step 1: Initial Creation)
+# infrastructure/main.tf (Final Deployment Version - Step 2)
 
-# 1. Resource Group
+# ------------------------------------------------------------------
+#  PROVIDER CONFIGURATION
+# ------------------------------------------------------------------
+
+terraform {
+  required_providers {
+    azuredevops = {
+      source  = "microsoft/azuredevops"
+      version = ">= 0.4.0"
+    }
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = ">= 3.74.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
+  }
+}
+
+provider "azuredevops" {
+  org_service_url = "https://dev.azure.com/reccloudcomputingproject"
+}
+
+provider "azurerm" {
+  features {}
+}
+
+# ------------------------------------------------------------------
+#  AZURE INFRASTRUCTURE
+# ------------------------------------------------------------------
+
+variable "location" { default = "Central India" }
+variable "resource_group_name" { default = "mesh-project-rg" }
+variable "acr_sku" { default = "Basic" }
+variable "github_repo_id" { default = "GopinathR20/Mesh-Microservices-CICD" }
+variable "github_branch_name" { default = "main" }
+variable "github_connection_id" { default = "GitHub-OAuth-Connection" }
+variable "azdo_project_name" { default = "Mesh" }
+variable "microservices" {
+  type    = list(string)
+  default = ["api-gateway", "admin-service", "classroom-service", "discovery-server", "user-service", "ai-service"]
+}
+
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
   location = var.location
 }
 
-# 2. Container Registry
 resource "azurerm_container_registry" "acr" {
-  name                = lower("meshregistry${substr(md5(var.resource_group_name), 0, 5)}") # Ensure lowercase
+  name                = lower("meshregistry${substr(md5(var.resource_group_name), 0, 5)}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   sku                 = var.acr_sku
   admin_enabled       = true
 }
 
-# 3. Container App Environment
 resource "azurerm_container_app_environment" "aca_env" {
   name                = "mesh-aca-env"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
 }
 
-# 4. Cosmos DB (Optional - remove if not needed)
+# Cosmos DB (Optional)
 resource "azurerm_cosmosdb_account" "cosmos" {
-  name                = lower("mesh-cosmos-db-${random_integer.suffix.result}") # Ensure lowercase
+  name                = lower("mesh-cosmos-db-${random_integer.suffix.result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   offer_type          = "Standard"
-  kind                = "GlobalDocumentDB" # Change to MongoDB if needed by your app
-
-  consistency_policy {
-    consistency_level = "Session"
-  }
-
-  geo_location {
-    location          = azurerm_resource_group.rg.location
-    failover_priority = 0
-  }
-  # enable_free_tier = true <-- Removed this line
+  kind                = "GlobalDocumentDB"
+  consistency_policy { consistency_level = "Session" }
+  geo_location { location = azurerm_resource_group.rg.location; failover_priority = 0 }
 }
 
-# Suffix for unique Cosmos DB naming
 resource "random_integer" "suffix" {
   min = 10000
   max = 99999
 }
 
-# 5. Container Apps (using placeholder image)
+# ------------------------------------------------------------------
+#  DEPLOYMENT RESOURCES (Full Configuration)
+# ------------------------------------------------------------------
+
 resource "azurerm_container_app" "microservices" {
   for_each = toset(var.microservices)
 
@@ -56,37 +92,53 @@ resource "azurerm_container_app" "microservices" {
   resource_group_name          = azurerm_resource_group.rg.name
   revision_mode                = "Single"
 
-  # Minimal template with placeholder image for initial creation
+  # Final TEMPLATE configuration: Uses actual built image
   template {
     container {
-      name   = "placeholder"
-      image  = "mcr.microsoft.com/k8se/apps/null-image:latest"
-      cpu    = 0.25
-      memory = "0.5Gi"
+      name   = each.key
+      image  = "${azurerm_container_registry.acr.login_server}/${each.key}:latest" # Actual image path
+      cpu    = 0.5
+      memory = "1.0Gi"
     }
-    min_replicas = 0 # Scale to zero when idle (Free tier benefit)
-    max_replicas = 1 # Start with one replica max
+  }
+
+  # ACR AUTHENTICATION: Inject ACR credentials into the Container App
+  registry {
+    server               = azurerm_container_registry.acr.login_server
+    username             = azurerm_container_registry.acr.admin_username
+    password_secret_name = "acr-password"
+  }
+  secret {
+    name  = "acr-password"
+    value = azurerm_container_registry.acr.admin_password
+  }
+
+  # INGRESS: Set external access for API Gateway only
+  ingress {
+    external_enabled = each.key == "api-gateway" ? true : false
+    target_port      = 8080
   }
 }
 
-# 6. Azure DevOps Project Data Source
+# ------------------------------------------------------------------
+#  AZURE DEVOPS PIPELINES (Unchanged)
+# ------------------------------------------------------------------
+
 data "azuredevops_project" "project" {
   name = var.azdo_project_name
 }
 
-# 7. Azure DevOps Pipelines (one for each service)
 resource "azuredevops_build_definition" "pipelines" {
   for_each = toset(var.microservices)
 
   project_id = data.azuredevops_project.project.id
-  name       = "${title(replace(each.key, "-", " "))}-CI" # Creates names like "Api Gateway CI"
+  name       = "${title(replace(each.key, "-", " "))}-CI"
 
   repository {
     repo_type             = "GitHub"
     repo_id               = var.github_repo_id
     branch_name           = var.github_branch_name
     service_connection_id = var.github_connection_id
-    # Ensure this path matches your structure (Mesh-Microservices folder contains service folders)
     yml_path              = "Mesh-Microservices/${each.key}/azure-pipelines.yml"
   }
 }
