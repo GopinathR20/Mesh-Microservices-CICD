@@ -15,13 +15,10 @@ variables:
   azureServiceConnection: 'Azure-ARM-Manual' # Your verified ARM connection
   acrServiceConnection: 'ACR-Connection'     # Your ACR/Docker Registry connection
   location: 'centralindia'
-
-  # List must match your 'variables.tf' file and folder names
+  resourceGroup: 'mesh-project-rg'
+  acrName: 'meshregistry6a333' # HARDCODED - Use your actual ACR name
   microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
-
-  # List of services to build with Maven (all except Python-based ai-service)
-  java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service'
-
+  java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service' # Excludes non-java 'ai-service'
   docker_tag: '$(Build.BuildId)'
   vmImage: 'ubuntu-latest'
   terraformVersion: '1.6.0'
@@ -55,12 +52,12 @@ stages:
                 cd /tmp
                 wget -q "https://releases.hashicorp.com/terraform/${TFV}/terraform_${TFV}_linux_amd64.zip" -O terraform.zip
                 unzip -o terraform.zip
-                sudo mv terraform /usr/local/bin/terraform
+                sudo mv terraform /usr/local/bin/
                 terraform --version
 
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init, Plan, & Apply'
+            displayName: 'Terraform Init & Apply'
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: 'bash'
@@ -68,40 +65,23 @@ stages:
               workingDirectory: 'infrastructure' # Run in the infra folder
               inlineScript: |
                 set -euo pipefail
-                
                 echo "terraform init"
-                # This init command assumes you created the backend storage account manually
+                # Init with backend config
                 terraform init -input=false -upgrade \
                   -backend-config="storage_account_name=csg100320035b718cb1" \
                   -backend-config="container_name=tfstate" \
                   -backend-config="key=mesh.prod.terraform.tfstate" \
                   -backend-config="resource_group_name=cloud-shell-storage-centralindia"
                 
-                # Create the list of services for Terraform
-                MS_LIST_STR="$(microservice_list)"
-                TF_LIST_VAR="[\"${MS_LIST_STR//,/\",\"}\"]"
-                echo "Formatted microservice list for Terraform: ${TF_LIST_VAR}"
-                
-                echo "terraform plan"
-                # Note: We are using a static prefix here for simplicity
-                # If you add 'name_prefix' back to variables.tf, you can use it here
-                terraform plan -input=false -out=tfplan \
-                  -var="location=$(location)" \
-                  -var="microservices=${TF_LIST_VAR}"
-                
                 echo "terraform apply"
-                terraform apply -input=false -auto-approve tfplan
+                terraform apply -auto-approve -input=false
                 
                 echo "Gathering Terraform outputs..."
-                # Get all outputs from Terraform for the next stages
-                echo "##vso[task.setvariable variable=TF_RG;isOutput=true]$(terraform output -raw resource_group_name)"
-                echo "##vso[task.setvariable variable=TF_ACR_NAME;isOutput=true]$(terraform output -raw acr_name)"
-                echo "##vso[task.setvariable variable=TF_ACR_LOGIN;isOutput=true]$(terraform output -raw acr_login_server)"
-                echo "##vso[task.setvariable variable=TF_COSMOS_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
-                echo "##vso[task.setvariable variable=TF_ACR_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
-                echo "##vso[task.setvariable variable=TF_ACR_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
-
-            # This env block is CRITICAL for Terraform to authenticate
+                echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
+                echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
+                echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
             env:
               ARM_CLIENT_ID: $(servicePrincipalId)
               ARM_CLIENT_SECRET: $(servicePrincipalKey)
@@ -120,33 +100,27 @@ stages:
         displayName: 'Build & Push All Services'
         pool:
           vmImage: $(vmImage)
-        variables:
-          # Get ACR login server from previous stage
-          TF_ACR_LOGIN: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_ACR_LOGIN'] ]
         steps:
           - checkout: self
 
-          # Step 1: Build ALL Java JARs using Parent POM
           - task: Maven@3
             displayName: 'Build All Java Modules (Maven)'
             inputs:
-              mavenPomFile: 'pom.xml' # Point to the ROOT pom.xml
+              mavenPomFile: 'pom.xml' # Root pom.xml
               goals: 'package'
               options: '-DskipTests'
               jdkVersionOption: '1.17'
               jdkArchitectureOption: 'x64'
 
-          # Step 2: Build and Push Docker Image for EACH service
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
                 inputs:
                   command: 'buildAndPush'
                   containerRegistry: $(acrServiceConnection)
-                  repository: '${{ service }}' # Image name, e.g., 'user-service'
-                  # Correct path into Mesh-Microservices folder
-                  dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile'
-                  buildContext: 'Mesh-Microservices/${{ service }}'
+                  repository: '${{ service }}'
+                  dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile' # Correct path
+                  buildContext: 'Mesh-Microservices/${{ service }}' # Correct context
                   tags: |
                     $(docker_tag)
                     latest
@@ -167,11 +141,11 @@ stages:
           vmImage: $(vmImage)
         variables:
           # Get all output variables from the Terraform stage
-          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_RG'] ]
-          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_ACR_LOGIN'] ]
-          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_ACR_ADMIN_USER'] ]
-          ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_ACR_ADMIN_PASS'] ]
-          COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.TF_COSMOS_CONN_STRING'] ]
+          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.RG_NAME'] ]
+          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_LOGIN_SERVER'] ]
+          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_USER'] ]
+          ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_PASS'] ]
+          COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.COSMOS_DB_CONN_STRING'] ]
         steps:
           # Loop through each service and deploy it
           - ${{ each service in split(variables.microservice_list, ',') }}:
