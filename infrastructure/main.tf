@@ -1,4 +1,4 @@
-# infrastructure/main.tf (Step 1: Initial Creation - Web Apps)
+# infrastructure/main.tf (Step 1: Initial Creation - Web Apps - Corrected Indentation & app_settings)
 
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
@@ -13,7 +13,7 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = true
 }
 
-# NEW: App Service Plan - Controls compute resources for Web Apps
+# App Service Plan - Controls compute resources for Web Apps
 resource "azurerm_service_plan" "asp" {
   name                = "mesh-asp"
   location            = azurerm_resource_group.rg.location
@@ -24,24 +24,31 @@ resource "azurerm_service_plan" "asp" {
 
 # Optional Cosmos DB (uses free tier if eligible)
 resource "azurerm_cosmosdb_account" "cosmos" {
-  name                = lower("mesh-cosmos-db-${random_integer.suffix.result}")
+  count               = 1 # Set count = 0 to disable
+  name                = lower("mesh-cosmos-db-${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   offer_type          = "Standard"
   kind                = var.cosmos_db_kind
 
-  consistency_policy { consistency_level = "Session" }
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
   geo_location {
-    location = azurerm_resource_group.rg.location
+    location          = azurerm_resource_group.rg.location
     failover_priority = 0
   }
 }
+
+# Helper for unique Cosmos DB naming
 resource "random_integer" "suffix" {
-  min = 10000
-  max = 99999
+  count = 1
+  min   = 10000
+  max   = 99999
 }
 
-# UPDATED: Create Linux Web Apps for Containers (Empty Shells for Step 1)
+# Create Linux Web Apps for Containers (Empty Shells for Step 1)
 resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
 
@@ -54,10 +61,13 @@ resource "azurerm_linux_web_app" "microservices" {
   site_config {
     always_on        = var.app_service_plan_sku == "F1" ? false : true # Always On requires Basic+ tier
     linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Use a no-op image initially
-    # Ensure app settings can receive port from Dockerfile (important for Spring Boot)
-    app_settings = {
-      "WEBSITES_PORT" = "8080" # Tell App Service which port your container uses
-    }
+    # app_settings block moved below
+  }
+
+  # CORRECT PLACEMENT for app_settings, directly under the resource
+  app_settings = {
+    "WEBSITES_PORT" = "8080" # Tell App Service which port container uses
+    # Add other common environment variables here if needed
   }
 }
 
