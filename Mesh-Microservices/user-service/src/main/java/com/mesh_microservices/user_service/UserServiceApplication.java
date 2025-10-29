@@ -12,7 +12,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  */
 @SpringBootApplication
 public class UserServiceApplication {
-
+	//Trigger pipeline run
 	/**
 	 * The main method that launches the User Service application.
 	 *
