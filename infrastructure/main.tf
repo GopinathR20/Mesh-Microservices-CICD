@@ -59,9 +59,11 @@ resource "azurerm_linux_web_app" "microservices" {
 
   # Minimal site_config using a placeholder image for initial creation
   site_config {
-    always_on        = var.app_service_plan_sku == "F1" ? false : true # Always On requires Basic+ tier
-    linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Use a no-op image initially
-    # app_settings block moved below
+    always_on        = var.app_service_plan_sku == "F1" ? false : true
+    # linux_fx_version removed - Azure will set a default
+    app_settings = {
+      "WEBSITES_PORT" = "8080"
+    }
   }
 
   # CORRECT PLACEMENT for app_settings, directly under the resource
