@@ -40,14 +40,44 @@ steps:
         latest
 
   - task: AzureCLI@2
-    displayName: 'Update Azure Container App Image'
+    name: Terraform
+    displayName: 'Run Terraform Apply'
     inputs:
-      azureSubscription: '$(AZURE_SUBSCRIPTION)'
-      scriptType: 'bash'
-      scriptLocation: 'inlineScript'
-      inlineScript: |
-        az containerapp update \
-          --name $(SERVICE_NAME)-app \
-          --resource-group $(AZURE_RESOURCE_GROUP) \
-          --image $(ACR_NAME).azurecr.io/$(SERVICE_NAME):$(IMAGE_TAG) \
-          --registry-server $(ACR_NAME).azurecr.io
+        azureSubscription: $(azureServiceConnection) # This is 'Azure-ARM-Manual'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        workingDirectory: 'infrastructure' # Run in the infra folder
+        inlineScript: |
+          set -euo pipefail
+          echo "Installing Terraform..."
+          wget -q https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
+          unzip -o terraform_1.6.0_linux_amd64.zip
+          sudo mv terraform /usr/local/bin/
+          
+          echo "terraform init"
+          # This init command assumes you created the backend storage account manually
+          terraform init -input=false \
+            -backend-config="storage_account_name=csg100320035b718cb1" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=mesh.prod.terraform.tfstate" \
+            -backend-config="resource_group_name=cloud-shell-storage-centralindia"
+          
+          echo "terraform apply"
+          terraform apply -auto-approve -input=false
+          
+          echo "Gathering Terraform outputs..."
+          # Get all outputs from Terraform for the next stages
+          echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
+          echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
+          echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
+          echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
+          echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
+
+      # --- THIS IS THE FIX ---
+      # Map the pipeline's SP credentials to the standard env vars
+      # that the Terraform provider (azurerm) will use for authentication.
+    env:
+        ARM_CLIENT_ID: $(servicePrincipalId)
+        ARM_CLIENT_SECRET: $(servicePrincipalKey)
+        ARM_SUBSCRIPTION_ID: $(subscriptionId)
+        ARM_TENANT_ID: $(tenantId)
