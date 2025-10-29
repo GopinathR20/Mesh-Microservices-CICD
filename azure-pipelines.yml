@@ -1,4 +1,4 @@
-# azure-pipelines.yml (Root Level - Single Pipeline for Web Apps)
+# azure-pipelines.yml (Root Level - 3 Stage)
 
 trigger:
   branches:
@@ -6,97 +6,173 @@ trigger:
       - main
   paths:
     include:
-      - 'Mesh-Microservices/*' # Use 'services' folder prefix
-    exclude:
-      - 'infrastructure/*'
+      - 'Mesh-Microservices/*' # Trigger on code change
+      - 'pom.xml'            # Trigger on parent pom change
+      - 'infrastructure/*'     # Trigger on terraform change
 
 variables:
-  AZURE_RESOURCE_GROUP: 'mesh-project-rg'
-  ACR_NAME: 'meshregistry6a333' # HARDCODED - Use your actual ACR name
-  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your ACR Service Connection
-  AZURE_SUBSCRIPTION: 'Azure-ARM-Manual' # Your ARM Service Connection
-  VM_IMAGE: 'ubuntu-latest'
+  # === YOUR VARIABLES ===
+  azureServiceConnection: 'Azure-ARM-Manual' # Your verified ARM connection
+  acrServiceConnection: 'ACR-Connection'     # Your ACR/Docker Registry connection
+  location: 'centralindia'
+  resourceGroup: 'mesh-project-rg'
+  # HARDCODED: Use the name 'meshregistry' + the 5 char hash from your TF output
+  acrName: 'meshregistry6a333'
+  microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
+  docker_tag: '$(Build.BuildId)'
+  vmImage: 'ubuntu-latest'
 
 stages:
   # ==========================================================
-  # Stage 1: Build & Push only the changed service
+  # Stage 1: Provision Infrastructure (Terraform)
+  # ==========================================================
+  - stage: Infra
+    displayName: '1. Provision Infrastructure'
+    jobs:
+      - job: TerraformApply
+        displayName: 'Terraform Init & Apply'
+        pool:
+          vmImage: $(vmImage)
+        steps:
+          - checkout: self # Checkout the repository code
+
+          - task: AzureCLI@2
+            name: Terraform
+            displayName: 'Run Terraform Apply'
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              workingDirectory: 'infrastructure' # Run in the infra folder
+              inlineScript: |
+                set -euo pipefail
+                echo "Installing Terraform..."
+                wget -q https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
+                unzip -o terraform_1.6.0_linux_amd64.zip
+                sudo mv terraform /usr/local/bin/
+                
+                echo "terraform init"
+                # This init command assumes you created the backend storage account manually
+                terraform init -input=false \
+                  -backend-config="storage_account_name=csg100320035b718cb1" \
+                  -backend-config="container_name=tfstate" \
+                  -backend-config="key=mesh.prod.terraform.tfstate" \
+                  -backend-config="resource_group_name=cloud-shell-storage-centralindia"
+                
+                echo "terraform apply"
+                terraform apply -auto-approve -input=false
+                
+                echo "Gathering Terraform outputs..."
+                # Get all outputs from Terraform for the next stages
+                echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
+                echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
+                echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
+
+  # ==========================================================
+  # Stage 2: Build & Push All Docker Images
   # ==========================================================
   - stage: Build
-    displayName: 'Build & Push Changed Service'
+    displayName: '2. Build & Push Docker Images'
+    dependsOn: Infra
+    condition: succeeded('Infra')
     jobs:
-      - job: BuildPushDocker
-        displayName: 'Build Docker Image and Push to ACR'
+      - job: BuildAndPush
+        displayName: 'Build & Push All Services'
         pool:
-          vmImage: $(VM_IMAGE)
+          vmImage: $(vmImage)
         steps:
           - checkout: self
 
-          # Step 1: Determine which service changed
-          - task: Bash@3
-            name: FindChangedService
-            displayName: 'Determine Changed Service'
-            inputs:
-              targetType: 'inline'
-              script: |
-                echo "Checking for changed files..."
-                CHANGED_FILES=$(git diff HEAD HEAD~1 --name-only)
-                # Correctly extract service name from 'services/' path
-                CHANGED_SERVICE=$(echo "$CHANGED_FILES" | grep -oP 'services/\K[^/]+' | head -n 1)
-                
-                if [ -z "$CHANGED_SERVICE" ]; then
-                  echo "No service code changes detected. Skipping Build."
-                  echo "##vso[task.setvariable variable=ServiceName;isOutput=true;]SKIP"
-                else
-                  echo "Detected change in: $CHANGED_SERVICE"
-                  echo "##vso[task.setvariable variable=ServiceName;isOutput=true;]$CHANGED_SERVICE"
-                fi
-              failOnStderr: false
-
-          # Step 2: Build JAR (Only for Java services, conditional)
           - task: Maven@3
-            displayName: 'Build $(ServiceName) JAR'
-            condition: and(succeeded(), ne(variables['FindChangedService.ServiceName'], 'SKIP'), ne(variables['FindChangedService.ServiceName'], 'ai-service'))
+            displayName: 'Build All Java Modules (Maven)'
             inputs:
-              mavenPomFile: 'services/$(FindChangedService.ServiceName)/pom.xml' # Correct path
+              mavenPomFile: 'pom.xml' # Root pom.xml
               goals: 'package'
+              options: '-DskipTests'
               jdkVersionOption: '1.17'
               jdkArchitectureOption: 'x64'
 
-          # Step 3: Build and Push Docker Image
-          - task: Docker@2
-            displayName: 'Build and Push $(ServiceName) Image to ACR'
-            condition: and(succeeded(), ne(variables['FindChangedService.ServiceName'], 'SKIP'))
-            inputs:
-              command: 'buildAndPush'
-              containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
-              repository: '$(FindChangedService.ServiceName)'
-              dockerfile: 'services/$(FindChangedService.ServiceName)/Dockerfile' # Correct path
-              tags: |
-                $(Build.BuildId)
-                latest
+          # Loop through each service and build/push its Docker image
+          - ${{ each service in split(variables.microservice_list, ',') }}:
+              - task: Docker@2
+                displayName: 'Build & Push: ${{ service }}'
+                inputs:
+                  command: 'buildAndPush'
+                  containerRegistry: $(acrServiceConnection)
+                  repository: '${{ service }}' # Image name, e.g., 'user-service'
+                  dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile' # Correct path
+                  buildContext: 'Mesh-Microservices/${{ service }}' # Correct context
+                  tags: |
+                    $(docker_tag)
+                    latest
 
   # ==========================================================
-  # Stage 2: Deploy only the changed service to Web App
+  # Stage 3: Deploy ALL Containers to WebApps
   # ==========================================================
   - stage: Deploy
-    displayName: 'Deploy Changed Service to Web App'
-    dependsOn: Build
-    condition: and(succeeded('Build'), ne(stageDependencies.Build.BuildPushDocker.outputs['FindChangedService.ServiceName'], 'SKIP'))
+    displayName: '3. Deploy Containers to WebApps'
+    dependsOn:
+      - Build
+      - Infra
+    condition: succeeded('Build')
     jobs:
-      - job: DeployWebApp
-        displayName: 'Deploy to Azure Web App for Containers'
+      - job: DeployJob
+        displayName: 'Deploy All Services'
         pool:
-          vmImage: $(VM_IMAGE)
+          vmImage: $(vmImage)
         variables:
-          ServiceName: $[ stageDependencies.Build.BuildPushDocker.outputs['FindChangedService.ServiceName'] ]
-          WebAppName: '$(ServiceName)-webapp' # Matches Terraform naming
-          FullImageName: '$(ACR_NAME).azurecr.io/$(ServiceName):$(Build.BuildId)'
+          # Get all output variables from the Terraform stage
+          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['Terraform.RG_NAME'] ]
+          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['Terraform.ACR_LOGIN_SERVER'] ]
+          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['Terraform.ACR_ADMIN_USER'] ]
+          ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['Terraform.ACR_ADMIN_PASS'] ]
+          COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['Terraform.COSMOS_DB_CONN_STRING'] ]
         steps:
-          # Step 1: Deploy using AzureWebAppContainer task
-          - task: AzureWebAppContainer@1
-            displayName: 'Deploy $(ServiceName) to Web App'
-            inputs:
-              azureSubscription: '$(AZURE_SUBSCRIPTION)'
-              appName: '$(WebAppName)' # The name of the Web App Resource
-              resourceGroupName: '$(AZURE_RESOURCE_GROUP)' # Resource Group Name
-              imageName: '$(FullImageName)' # The specific image:tag built in this run
+          # Loop through each service and deploy it
+          - ${{ each service in split(variables.microservice_list, ',') }}:
+              - task: AzureCLI@2
+                displayName: 'Deploy: ${{ service }}'
+                inputs:
+                  azureSubscription: $(azureServiceConnection)
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -euo pipefail
+                    APP_NAME="${{ service }}-webapp"
+                    IMAGE_NAME="$(ACR_LOGIN_SERVER)/${{ service }}:$(docker_tag)"
+                    
+                    echo "Updating Container Image for $APP_NAME..."
+                    az webapp config container set \
+                      --name $APP_NAME \
+                      --resource-group $(RG_NAME) \
+                      --docker-custom-image-name $IMAGE_NAME \
+                      --docker-registry-server-url https://$(ACR_LOGIN_SERVER) \
+                      --docker-registry-server-user $(ACR_ADMIN_USER) \
+                      --docker-registry-server-password $(ACR_ADMIN_PASS)
+                    
+                    echo "Updating App Settings for $APP_NAME..."
+                    # Base settings for all apps
+                    SETTINGS=(
+                      "WEBSITES_PORT=8080"
+                      "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)" 
+                    )
+                    
+                    # Add Eureka URL for all services except discovery-server itself
+                    if [ "${{ service }}" != "discovery-server" ]; then
+                      SETTINGS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server-webapp.azurewebsites.net/eureka/")
+                    else
+                      SETTINGS+=("EUREKA_CLIENT_REGISTERWITHEUREKA=false" "EUREKA_CLIENT_FETCHREGISTRY=false")
+                    fi
+                    
+                    # Add AI service specific settings
+                    if [ "${{ service }}" == "ai-service" ]; then
+                      SETTINGS+=("GEMINI_API_KEY=$(GEMINI_API_KEY)") # From Variable Group
+                    fi
+                    
+                    # Add settings to Web App
+                    az webapp config appsettings set \
+                      --resource-group $(RG_NAME) \
+                      --name $APP_NAME \
+                      --settings "${SETTINGS[@]}"
