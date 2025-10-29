@@ -1,6 +1,8 @@
 # infrastructure/providers.tf
 
 terraform {
+  required_version = ">= 1.0"
+
   required_providers {
     azuredevops = {
       source  = "microsoft/azuredevops"
@@ -19,10 +21,8 @@ terraform {
 
 provider "azuredevops" {
   org_service_url = var.azdo_org_service_url
-  # The PAT will be supplied via the AZDO_PERSONAL_ACCESS_TOKEN environment variable
 }
 
 provider "azurerm" {
   features {}
-  # The Subscription ID will be supplied via the ARM_SUBSCRIPTION_ID environment variable
 }

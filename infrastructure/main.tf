@@ -1,49 +1,4 @@
-# infrastructure/main.tf (Final Deployment Version - Step 2)
-
-# ------------------------------------------------------------------
-#  PROVIDER CONFIGURATION
-# ------------------------------------------------------------------
-
-terraform {
-  required_providers {
-    azuredevops = {
-      source  = "microsoft/azuredevops"
-      version = ">= 0.4.0"
-    }
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = ">= 3.74.0"
-    }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.0"
-    }
-  }
-}
-
-provider "azuredevops" {
-  org_service_url = "https://dev.azure.com/reccloudcomputingproject"
-}
-
-provider "azurerm" {
-  features {}
-}
-
-# ------------------------------------------------------------------
-#  AZURE INFRASTRUCTURE
-# ------------------------------------------------------------------
-
-variable "location" { default = "Central India" }
-variable "resource_group_name" { default = "mesh-project-rg" }
-variable "acr_sku" { default = "Basic" }
-variable "github_repo_id" { default = "GopinathR20/Mesh-Microservices-CICD" }
-variable "github_branch_name" { default = "main" }
-variable "github_connection_id" { default = "GitHub-OAuth-Connection" }
-variable "azdo_project_name" { default = "Mesh" }
-variable "microservices" {
-  type    = list(string)
-  default = ["api-gateway", "admin-service", "classroom-service", "discovery-server", "user-service", "ai-service"]
-}
+# infrastructure/main.tf (Step 1: Initial Creation - Web Apps)
 
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
@@ -58,88 +13,63 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = true
 }
 
-resource "azurerm_container_app_environment" "aca_env" {
-  name                = "mesh-aca-env"
-  resource_group_name = azurerm_resource_group.rg.name
+# NEW: App Service Plan - Controls compute resources for Web Apps
+resource "azurerm_service_plan" "asp" {
+  name                = "mesh-asp"
   location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  os_type             = "Linux" # Required for container web apps
+  sku_name            = var.app_service_plan_sku # Uses F1 (Free) or B1 (Basic)
 }
 
-# Cosmos DB (Optional)
+# Optional Cosmos DB (uses free tier if eligible)
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = lower("mesh-cosmos-db-${random_integer.suffix.result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   offer_type          = "Standard"
-  kind                = "GlobalDocumentDB"
+  kind                = var.cosmos_db_kind
+
   consistency_policy { consistency_level = "Session" }
   geo_location { location = azurerm_resource_group.rg.location; failover_priority = 0 }
 }
+resource "random_integer" "suffix" { min = 10000; max = 99999 }
 
-resource "random_integer" "suffix" {
-  min = 10000
-  max = 99999
-}
-
-# ------------------------------------------------------------------
-#  DEPLOYMENT RESOURCES (Full Configuration)
-# ------------------------------------------------------------------
-
-resource "azurerm_container_app" "microservices" {
+# UPDATED: Create Linux Web Apps for Containers (Empty Shells for Step 1)
+resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
 
-  name                         = "${each.key}-app"
-  container_app_environment_id = azurerm_container_app_environment.aca_env.id
-  resource_group_name          = azurerm_resource_group.rg.name
-  revision_mode                = "Single"
+  name                = "${each.key}-webapp" # Naming convention for Web Apps
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  service_plan_id     = azurerm_service_plan.asp.id
 
-  # Final TEMPLATE configuration: Uses actual built image
-  template {
-    container {
-      name   = each.key
-      image  = "${azurerm_container_registry.acr.login_server}/${each.key}:latest" # Actual image path
-      cpu    = 0.5
-      memory = "1.0Gi"
+  # Minimal site_config using a placeholder image for initial creation
+  site_config {
+    always_on        = var.app_service_plan_sku == "F1" ? false : true # Always On requires Basic+ tier
+    linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Use a no-op image initially
+    # Ensure app settings can receive port from Dockerfile (important for Spring Boot)
+    app_settings = {
+      "WEBSITES_PORT" = "8080" # Tell App Service which port your container uses
     }
-  }
-
-  # ACR AUTHENTICATION: Inject ACR credentials into the Container App
-  registry {
-    server               = azurerm_container_registry.acr.login_server
-    username             = azurerm_container_registry.acr.admin_username
-    password_secret_name = "acr-password"
-  }
-  secret {
-    name  = "acr-password"
-    value = azurerm_container_registry.acr.admin_password
-  }
-
-  # INGRESS: Set external access for API Gateway only
-  ingress {
-    external_enabled = each.key == "api-gateway" ? true : false
-    target_port      = 8080
   }
 }
 
-# ------------------------------------------------------------------
-#  AZURE DEVOPS PIPELINES (Unchanged)
-# ------------------------------------------------------------------
-
+# Azure DevOps Project Data Source
 data "azuredevops_project" "project" {
   name = var.azdo_project_name
 }
 
-resource "azuredevops_build_definition" "pipelines" {
-  for_each = toset(var.microservices)
-
+# Azure DevOps Pipeline (Single Definition)
+resource "azuredevops_build_definition" "main_ci_cd_pipeline" {
   project_id = data.azuredevops_project.project.id
-  name       = "${title(replace(each.key, "-", " "))}-CI"
+  name       = "Mesh Microservices CI-CD (Web Apps)" # Updated name
 
   repository {
     repo_type             = "GitHub"
     repo_id               = var.github_repo_id
     branch_name           = var.github_branch_name
     service_connection_id = var.github_connection_id
-    yml_path = "Mesh-Microservices/${each.key}/azure-pipelines.yml"
-
+    yml_path              = "azure-pipelines.yml" # Root pipeline file
   }
 }

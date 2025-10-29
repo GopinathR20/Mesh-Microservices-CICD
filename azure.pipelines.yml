@@ -1,0 +1,102 @@
+# azure-pipelines.yml (Root Level - Single Pipeline for Web Apps)
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - 'services/*' # Use 'services' folder prefix
+    exclude:
+      - 'infrastructure/*'
+
+variables:
+  AZURE_RESOURCE_GROUP: 'mesh-project-rg'
+  ACR_NAME: 'meshregistry6a333' # HARDCODED - Use your actual ACR name
+  DOCKER_REGISTRY_CONNECTION: 'ACR-Connection' # Your ACR Service Connection
+  AZURE_SUBSCRIPTION: 'Azure-ARM-Manual' # Your ARM Service Connection
+  VM_IMAGE: 'ubuntu-latest'
+
+stages:
+  # ==========================================================
+  # Stage 1: Build & Push only the changed service
+  # ==========================================================
+  - stage: Build
+    displayName: 'Build & Push Changed Service'
+    jobs:
+      - job: BuildPushDocker
+        displayName: 'Build Docker Image and Push to ACR'
+        pool:
+          vmImage: $(VM_IMAGE)
+        steps:
+          - checkout: self
+
+          # Step 1: Determine which service changed
+          - task: Bash@3
+            name: FindChangedService
+            displayName: 'Determine Changed Service'
+            inputs:
+              targetType: 'inline'
+              script: |
+                echo "Checking for changed files..."
+                CHANGED_FILES=$(git diff HEAD HEAD~1 --name-only)
+                # Correctly extract service name from 'services/' path
+                CHANGED_SERVICE=$(echo "$CHANGED_FILES" | grep -oP 'services/\K[^/]+' | head -n 1)
+                
+                if [ -z "$CHANGED_SERVICE" ]; then
+                  echo "No service code changes detected. Skipping Build."
+                  echo "##vso[task.setvariable variable=ServiceName;isOutput=true;]SKIP"
+                else
+                  echo "Detected change in: $CHANGED_SERVICE"
+                  echo "##vso[task.setvariable variable=ServiceName;isOutput=true;]$CHANGED_SERVICE"
+                fi
+              failOnStderr: false
+
+          # Step 2: Build JAR (Only for Java services, conditional)
+          - task: Maven@3
+            displayName: 'Build $(ServiceName) JAR'
+            condition: and(succeeded(), ne(variables['FindChangedService.ServiceName'], 'SKIP'), ne(variables['FindChangedService.ServiceName'], 'ai-service'))
+            inputs:
+              mavenPomFile: 'services/$(FindChangedService.ServiceName)/pom.xml' # Correct path
+              goals: 'package'
+              jdkVersionOption: '1.17'
+              jdkArchitectureOption: 'x64'
+
+          # Step 3: Build and Push Docker Image
+          - task: Docker@2
+            displayName: 'Build and Push $(ServiceName) Image to ACR'
+            condition: and(succeeded(), ne(variables['FindChangedService.ServiceName'], 'SKIP'))
+            inputs:
+              command: 'buildAndPush'
+              containerRegistry: '$(DOCKER_REGISTRY_CONNECTION)'
+              repository: '$(FindChangedService.ServiceName)'
+              dockerfile: 'services/$(FindChangedService.ServiceName)/Dockerfile' # Correct path
+              tags: |
+                $(Build.BuildId)
+                latest
+
+  # ==========================================================
+  # Stage 2: Deploy only the changed service to Web App
+  # ==========================================================
+  - stage: Deploy
+    displayName: 'Deploy Changed Service to Web App'
+    dependsOn: Build
+    condition: and(succeeded('Build'), ne(stageDependencies.Build.BuildPushDocker.outputs['FindChangedService.ServiceName'], 'SKIP'))
+    jobs:
+      - job: DeployWebApp
+        displayName: 'Deploy to Azure Web App for Containers'
+        pool:
+          vmImage: $(VM_IMAGE)
+        variables:
+          ServiceName: $[ stageDependencies.Build.BuildPushDocker.outputs['FindChangedService.ServiceName'] ]
+          WebAppName: '$(ServiceName)-webapp' # Matches Terraform naming
+          FullImageName: '$(ACR_NAME).azurecr.io/$(ServiceName):$(Build.BuildId)'
+        steps:
+          # Step 1: Deploy using AzureWebAppContainer task
+          - task: AzureWebAppContainer@1
+            displayName: 'Deploy $(ServiceName) to Web App'
+            inputs:
+              azureSubscription: '$(AZURE_SUBSCRIPTION)'
+              appName: '$(WebAppName)' # The name of the Web App Resource
+              resourceGroupName: '$(AZURE_RESOURCE_GROUP)' # Resource Group Name
+              imageName: '$(FullImageName)' # The specific image:tag built in this run
