@@ -57,7 +57,7 @@ resource "azurerm_linux_web_app" "microservices" {
   # Minimal site_config using a placeholder image for initial creation
   site_config {
     always_on        = var.app_service_plan_sku == "F1" ? false : true
-    linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Placeholder image
+    #linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Placeholder image
     # app_settings removed from here
   }
 
