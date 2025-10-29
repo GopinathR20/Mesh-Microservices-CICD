@@ -29,9 +29,15 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   kind                = var.cosmos_db_kind
   capabilities { name = "EnableMongo" }
   consistency_policy { consistency_level = "Session" }
-  geo_location { location = azurerm_resource_group.rg.location; failover_priority = 0 }
+  geo_location {
+    location = azurerm_resource_group.rg.location
+    failover_priority = 0
+  }
 }
-resource "random_integer" "suffix" { min = 10000; max = 99999 }
+resource "random_integer" "suffix" {
+  min = 10000
+  max = 99999
+}
 
 # Create Linux Web Apps for Containers
 resource "azurerm_linux_web_app" "microservices" {
