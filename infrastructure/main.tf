@@ -51,7 +51,7 @@ resource "azurerm_linux_web_app" "microservices" {
   # This configuration will be updated by the pipeline in Stage 3
   site_config {
     always_on        = false # Free tier does not support Always On
-    linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Placeholder image
+    #linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Placeholder image
   }
 
   app_settings = {
