@@ -6,7 +6,7 @@ trigger:
       - main
   paths:
     include:
-      - 'services/*' # Use 'services' folder prefix
+      - 'Mesh-Microservices/*' # Use 'services' folder prefix
     exclude:
       - 'infrastructure/*'
 
