@@ -13,7 +13,8 @@ output "acr_admin_password" {
 }
 
 output "cosmos_db_connection_string" {
-  value     = azurerm_cosmosdb_account.cosmos.primary_mongodb_connection_string
+  # Access the first instance [0] of the resource created with count
+  value     = azurerm_cosmosdb_account.cosmos[0].primary_mongodb_connection_string
   sensitive = true
 }
 
