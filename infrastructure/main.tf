@@ -1,4 +1,4 @@
-# infrastructure/main.tf
+# infrastructure/main.tf (Corrected: Includes pipeline definition)
 
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
@@ -9,8 +9,8 @@ resource "azurerm_container_registry" "acr" {
   name                = lower("meshregistry${substr(md5(var.resource_group_name), 0, 5)}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
-  sku                 = "Basic"
-  admin_enabled       = true # Easiest for pipeline authentication
+  sku                 = var.acr_sku
+  admin_enabled       = true
 }
 
 resource "azurerm_service_plan" "asp" {
@@ -18,11 +18,12 @@ resource "azurerm_service_plan" "asp" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
-  sku_name            = var.app_service_plan_sku # F1 (Free)
+  sku_name            = var.app_service_plan_sku
 }
 
 resource "azurerm_cosmosdb_account" "cosmos" {
-  name                = lower("mesh-cosmos-db-${random_integer.suffix.result}")
+  count               = 1 # Set count = 0 to disable
+  name                = lower("mesh-cosmos-db-${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   offer_type          = "Standard"
@@ -30,16 +31,16 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   capabilities { name = "EnableMongo" }
   consistency_policy { consistency_level = "Session" }
   geo_location {
-    location = azurerm_resource_group.rg.location
+    location          = azurerm_resource_group.rg.location
     failover_priority = 0
   }
 }
 resource "random_integer" "suffix" {
-  min = 10000
-  max = 99999
+  count = 1
+  min   = 10000
+  max   = 99999
 }
 
-# Create Linux Web Apps for Containers
 resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
 
@@ -48,13 +49,33 @@ resource "azurerm_linux_web_app" "microservices" {
   resource_group_name = azurerm_resource_group.rg.name
   service_plan_id     = azurerm_service_plan.asp.id
 
-  # This configuration will be updated by the pipeline in Stage 3
   site_config {
-    always_on        = false # Free tier does not support Always On
-    #linux_fx_version = "DOCKER|mcr.microsoft.com/oryx/noop:latest" # Placeholder image
+    always_on = false
+    # linux_fx_version commented out for Step 1
   }
-
   app_settings = {
-    "WEBSITES_PORT" = "8080" # Tell App Service which port container uses
+    "WEBSITES_PORT" = "8080"
+  }
+}
+
+# ------------------------------------------------------------------
+#  AZURE DEVOPS PIPELINE (THIS BLOCK WAS MISSING)
+# ------------------------------------------------------------------
+
+data "azuredevops_project" "project" {
+  name = var.azdo_project_name
+}
+
+# This resource creates the pipeline in Azure DevOps
+resource "azuredevops_build_definition" "main_ci_cd_pipeline" {
+  project_id = data.azuredevops_project.project.id
+  name       = "Mesh Microservices CI-CD (Web Apps)"
+
+  repository {
+    repo_type             = "GitHub"
+    repo_id               = var.github_repo_id
+    branch_name           = var.github_branch_name
+    service_connection_id = var.github_connection_id
+    yml_path              = "azure-pipelines.yml" # Root pipeline file
   }
 }
