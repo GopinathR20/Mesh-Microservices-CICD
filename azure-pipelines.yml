@@ -68,7 +68,6 @@ stages:
               workingDirectory: 'infrastructure' # Run in the infra folder
               inlineScript: |
                 set -euo pipefail
-                cd infrastructure
                 
                 echo "terraform init"
                 # This init command assumes you created the backend storage account manually
