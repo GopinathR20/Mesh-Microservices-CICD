@@ -25,10 +25,6 @@ terraform {
   }
 }
 
-# ✅ Azure DevOps Provider
-provider "azuredevops" {
-  org_service_url = var.azdo_org_service_url
-}
 
 # ✅ Azure Provider — Explicitly use pipeline SPN credentials
 provider "azurerm" {
