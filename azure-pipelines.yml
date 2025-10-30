@@ -4,14 +4,7 @@
 # ==========================================================
 
 trigger:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - 'Mesh-Microservices/*'
-      - 'pom.xml'
-      - 'infrastructure/*'
+  - main
 
 # ----------------------------------------------------------
 # Global Variables + Linked Secrets
