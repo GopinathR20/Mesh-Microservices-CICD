@@ -1,11 +1,3 @@
-# --- Azure DevOps Auth ---
-variable "azdo_org_service_url" {
-  description = "Azure DevOps organization URL"
-  type        = string
-  default     = "https://dev.azure.com/reccloudcomputingproject"
-}
-
-# --- Azure SPN Auth (used in provider azurerm) ---
 # --- Azure Resource Variables ---
 variable "resource_group_name" {
   description = "Name for the Azure resource group."
@@ -39,26 +31,37 @@ variable "app_service_plan_sku" {
 
 variable "cosmos_db_kind" {
   description = "Cosmos DB kind"
+  type        = string
   default     = "MongoDB"
 }
 
-# --- GitHub + DevOps Project Vars ---
+# --- Azure DevOps + GitHub Variables ---
+variable "azdo_org_service_url" {
+  description = "Azure DevOps organization URL"
+  type        = string
+  default     = "https://dev.azure.com/reccloudcomputingproject"
+}
+
 variable "azdo_project_name" {
+  description = "Azure DevOps Project Name"
   type        = string
   default     = "Mesh"
 }
 
 variable "github_repo_id" {
+  description = "GitHub Repository ID"
   type        = string
   default     = "GopinathR20/Mesh-Microservices-CICD"
 }
 
 variable "github_branch_name" {
+  description = "GitHub Branch Name"
   type        = string
   default     = "main"
 }
 
 variable "github_connection_id" {
+  description = "GitHub Service Connection ID in Azure DevOps"
   type        = string
   default     = "github.com_GopinathR20"
 }

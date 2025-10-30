@@ -3,18 +3,15 @@ terraform {
 
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
+      source  = "hashicorp/azurerm"
       version = "~> 3.0"
     }
     random = {
-      source = "hashicorp/random"
+      source  = "hashicorp/random"
       version = ">= 3.0"
     }
-    ad = {
-      source  = "hashicorp/ad"
-      version = "0.5.0"
-    }
   }
+
   backend "azurerm" {
     resource_group_name  = "cloud-shell-storage-centralindia"
     storage_account_name = "csg100320035b718cb1"
@@ -24,6 +21,7 @@ terraform {
 }
 
 provider "azurerm" {
-  features{}
-
+  features {}
 }
+
+provider "random" {}
