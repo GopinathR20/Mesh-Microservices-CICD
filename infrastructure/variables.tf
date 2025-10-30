@@ -6,7 +6,7 @@ variable "azdo_org_service_url" {
 }
 
 variable "azdo_pat_token" {
-  description = "Azure DevOps Personal Access Token (for azuredevops provider)"
+  description = "Azure DevOps Personal Access Token (for azuredevops provider.)"
   type        = string
   sensitive   = true
 }
