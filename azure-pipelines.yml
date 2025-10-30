@@ -16,7 +16,8 @@ variables:
   acrServiceConnection: 'ACR-Connection'     # Your ACR/Docker Registry connection
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
-  acrName: 'meshregistry6a333' # HARDCODED - Use your actual ACR name
+  # HARDCODED: Use the name 'meshregistry' + the 5 char hash from your TF output
+  acrName: 'meshregistry6a333'
   microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
   java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service' # Excludes non-java 'ai-service'
   docker_tag: '$(Build.BuildId)'
@@ -112,13 +113,14 @@ stages:
               jdkVersionOption: '1.17'
               jdkArchitectureOption: 'x64'
 
+          # Loop through each service and build/push its Docker image
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
                 inputs:
                   command: 'buildAndPush'
                   containerRegistry: $(acrServiceConnection)
-                  repository: '${{ service }}'
+                  repository: '${{ service }}' # Image name, e.g., 'user-service'
                   dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile' # Correct path
                   buildContext: 'Mesh-Microservices/${{ service }}' # Correct context
                   tags: |
