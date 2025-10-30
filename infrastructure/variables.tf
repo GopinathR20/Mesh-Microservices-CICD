@@ -29,7 +29,7 @@ variable "microservices" {
 variable "app_service_plan_sku" {
   description = "App Service Plan SKU"
   type        = string
-  default     = "F1"
+  default     = "P0v3"
 }
 
 variable "cosmos_db_kind" {
