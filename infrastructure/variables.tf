@@ -1,30 +1,33 @@
-# infrastructure/variables.tf
-
-# --- Azure DevOps & GitHub Variables ---
+# --- Azure DevOps Auth ---
 variable "azdo_org_service_url" {
-  description = "The URL of the Azure DevOps organization."
+  description = "Azure DevOps organization URL"
   type        = string
   default     = "https://dev.azure.com/reccloudcomputingproject"
 }
-variable "azdo_project_name" {
-  description = "The name of the Azure DevOps project."
+
+variable "azdo_pat_token" {
+  description = "Azure DevOps Personal Access Token (for azuredevops provider)"
   type        = string
-  default     = "Mesh"
+  sensitive   = true
 }
-variable "github_repo_id" {
-  description = "The GitHub repository ID (e.g., 'username/repo')."
+
+# --- Azure SPN Auth (used in provider azurerm) ---
+variable "subscription_id" {
   type        = string
-  default     = "GopinathR20/Mesh-Microservices-CICD"
+  description = "Azure subscription ID"
 }
-variable "github_branch_name" {
-  description = "The branch pipelines will monitor."
+variable "tenant_id" {
   type        = string
-  default     = "main"
+  description = "Azure tenant ID"
 }
-variable "github_connection_id" {
-  description = "Name of the GitHub service connection in Azure DevOps."
+variable "client_id" {
   type        = string
-  default     = "github.com_GopinathR20" # Your verified connection name
+  description = "Service Principal client ID"
+}
+variable "client_secret" {
+  type        = string
+  sensitive   = true
+  description = "Service Principal client secret"
 }
 
 # --- Azure Resource Variables ---
@@ -33,27 +36,53 @@ variable "resource_group_name" {
   type        = string
   default     = "mesh-project-rg"
 }
+
 variable "location" {
   description = "Azure region for deployment."
   type        = string
   default     = "Central India"
 }
+
 variable "acr_sku" {
-  description = "SKU for Azure Container Registry (Basic includes free tier)."
+  description = "SKU for Azure Container Registry"
   type        = string
   default     = "Basic"
 }
+
 variable "microservices" {
-  description = "List of microservice names (must match folder names in 'services/')."
+  description = "List of microservice names"
   type        = list(string)
   default     = ["api-gateway", "admin-service", "classroom-service", "discovery-server", "user-service", "ai-service"]
 }
+
 variable "app_service_plan_sku" {
-  description = "SKU for the App Service Plan (F1=Free)."
+  description = "App Service Plan SKU"
   type        = string
   default     = "F1"
 }
+
 variable "cosmos_db_kind" {
-  description = "Kind of Cosmos DB (GlobalDocumentDB or MongoDB)."
+  description = "Cosmos DB kind"
   default     = "MongoDB"
+}
+
+# --- GitHub + DevOps Project Vars ---
+variable "azdo_project_name" {
+  type        = string
+  default     = "Mesh"
+}
+
+variable "github_repo_id" {
+  type        = string
+  default     = "GopinathR20/Mesh-Microservices-CICD"
+}
+
+variable "github_branch_name" {
+  type        = string
+  default     = "main"
+}
+
+variable "github_connection_id" {
+  type        = string
+  default     = "github.com_GopinathR20"
 }

@@ -1,6 +1,6 @@
 # ==========================================================
 # Azure Pipeline - Mesh Microservices (3 Stages)
-# Terraform + Docker + WebApp Deploy (Non-Federated)
+# Terraform + Docker + WebApp Deploy (Service Principal Auth)
 # ==========================================================
 
 trigger:
@@ -13,15 +13,19 @@ trigger:
       - 'pom.xml'
       - 'infrastructure/*'
 
+# ----------------------------------------------------------
+# Global Variables + Linked Secrets
+# ----------------------------------------------------------
 variables:
-  # === GLOBAL VARIABLES ===
-  azureServiceConnection: 'Azure-Connection'        # ✅ Normal Service Connection (Service Principal)
-  acrServiceConnection: 'ACR-Connection'            # ✅ Your ACR service connection
+  - group: TerraformSecrets     # ✅ Variable Group with ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID, AZDO_PAT_TOKEN
+
+  # Static project values
+  azureServiceConnection: 'Azure-Connection'
+  acrServiceConnection: 'ACR-Connection'
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
   acrName: 'meshregistry6a333'
   microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
-  java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service'
   docker_tag: '$(Build.BuildId)'
   vmImage: 'ubuntu-latest'
   TF_VERSION: '1.6.0'
@@ -40,6 +44,7 @@ stages:
         steps:
           - checkout: self
 
+          # Install Terraform
           - task: Bash@3
             displayName: 'Install Terraform $(TF_VERSION)'
             inputs:
@@ -53,47 +58,44 @@ stages:
                 sudo mv terraform /usr/local/bin/
                 terraform version
 
-          # ✅ FIXED: Use environment variables from Service Connection directly (No az login)
-          - task: AzureCLI@2
-            name: setOutputs
-            displayName: 'Terraform Init & Apply (Direct Service Principal Auth)'
+          # Terraform Init + Apply (Service Principal Auth)
+          - task: Bash@3
+            displayName: 'Terraform Init & Apply'
             inputs:
-              azureSubscription: $(azureServiceConnection)
-              scriptType: bash
-              scriptLocation: inlineScript
-              workingDirectory: 'infrastructure'
-              addSpnToEnvironment: true
-              inlineScript: |
+              targetType: 'inline'
+              script: |
                 set -e
-
-                echo "✅ Using Service Principal credentials for Terraform..."
-                export ARM_CLIENT_ID=$servicePrincipalId
-                export ARM_TENANT_ID=$tenantId
-                export ARM_SUBSCRIPTION_ID=$subscriptionId
-                export ARM_CLIENT_SECRET=$servicePrincipalKey
-
+                cd infrastructure
+                
+                echo "✅ Setting Service Principal environment for Terraform..."
+                export ARM_CLIENT_ID=$(ARM_CLIENT_ID)
+                export ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET)
+                export ARM_TENANT_ID=$(ARM_TENANT_ID)
+                export ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID)
+                
                 echo "Initializing Terraform backend..."
-                terraform init -input=false -upgrade \
-                  -backend-config="storage_account_name=csg100320035b718cb1" \
-                  -backend-config="container_name=tfstate" \
-                  -backend-config="key=mesh.prod.terraform.tfstate" \
-                  -backend-config="resource_group_name=cloud-shell-storage-centralindia"
-
+                terraform init -input=false -upgrade
+                
                 echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
-
-                echo "Extracting Terraform outputs..."
+                
+                echo "Fetching output variables..."
                 RG_NAME=$(terraform output -raw resource_group_name)
-                ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
+                ACR_LOGIN_SERVER=$(terraform output -raw container_registry_login_server)
                 ACR_ADMIN_USER=$(terraform output -raw acr_admin_username)
                 ACR_ADMIN_PASS=$(terraform output -raw acr_admin_password)
                 COSMOS_DB_CONN_STRING=$(terraform output -raw cosmos_db_connection_string)
-
+                
                 echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$RG_NAME"
                 echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$ACR_LOGIN_SERVER"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$ACR_ADMIN_USER"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$ACR_ADMIN_PASS"
                 echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$COSMOS_DB_CONN_STRING"
+            env:
+              ARM_CLIENT_ID: $(ARM_CLIENT_ID)
+              ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
+              ARM_TENANT_ID: $(ARM_TENANT_ID)
+              ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
 
   # ==========================================================
   # 2️⃣ Stage: Build & Push Docker Images
@@ -110,6 +112,7 @@ stages:
         steps:
           - checkout: self
 
+          # Build all Java microservices
           - task: Maven@3
             displayName: 'Build All Java Modules'
             inputs:
@@ -117,8 +120,8 @@ stages:
               goals: 'package'
               options: '-DskipTests'
               jdkVersionOption: '1.17'
-              jdkArchitectureOption: 'x64'
 
+          # Build & Push each microservice image
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
@@ -147,11 +150,11 @@ stages:
         pool:
           vmImage: $(vmImage)
         variables:
-          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.RG_NAME'] ]
-          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_LOGIN_SERVER'] ]
-          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_USER'] ]
-          ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_PASS'] ]
-          COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.COSMOS_DB_CONN_STRING'] ]
+          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.RG_NAME'] ]
+          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_LOGIN_SERVER'] ]
+          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_USER'] ]
+          ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_PASS'] ]
+          COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.COSMOS_DB_CONN_STRING'] ]
         steps:
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: AzureCLI@2
@@ -164,9 +167,9 @@ stages:
                     set -e
                     APP_NAME="${{ service }}-webapp"
                     IMAGE_NAME="$(ACR_LOGIN_SERVER)/${{ service }}:$(docker_tag)"
-
+                    
                     echo "🚀 Deploying $APP_NAME with image $IMAGE_NAME"
-
+                    
                     az webapp config container set \
                       --name "$APP_NAME" \
                       --resource-group "$(RG_NAME)" \
@@ -174,23 +177,23 @@ stages:
                       --docker-registry-server-url "https://$(ACR_LOGIN_SERVER)" \
                       --docker-registry-server-user "$(ACR_ADMIN_USER)" \
                       --docker-registry-server-password "$(ACR_ADMIN_PASS)"
-
+                    
                     echo "🔧 Updating App Settings for $APP_NAME"
                     SETTINGS=( \
                       "WEBSITES_PORT=8080" \
                       "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)" \
                     )
-
+                    
                     if [ "${{ service }}" != "discovery-server" ]; then
                       SETTINGS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server-webapp.azurewebsites.net/eureka/")
                     else
                       SETTINGS+=("EUREKA_CLIENT_REGISTERWITHEUREKA=false" "EUREKA_CLIENT_FETCHREGISTRY=false")
                     fi
-
+                    
                     if [ "${{ service }}" == "ai-service" ]; then
                       SETTINGS+=("GEMINI_API_KEY=$(GEMINI_API_KEY)")
                     fi
-
+                    
                     az webapp config appsettings set \
                       --resource-group "$(RG_NAME)" \
                       --name "$APP_NAME" \

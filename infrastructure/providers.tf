@@ -1,7 +1,6 @@
-# infrastructure/providers.tf
-
 terraform {
   required_version = ">= 1.0"
+
   required_providers {
     azuredevops = {
       source  = "microsoft/azuredevops"
@@ -16,24 +15,28 @@ terraform {
       version = "~> 3.0"
     }
   }
-}
 
-# Provider for Azure DevOps (was missing)
-provider "azuredevops" {
-  org_service_url = var.azdo_org_service_url
-}
-
-# Provider for Azure
-provider "azurerm" {
-  features {}
-}
-
-# Backend block pointing to your correct Cloud Shell storage
-terraform {
+  # ✅ Backend block (Terraform remote state)
   backend "azurerm" {
     resource_group_name  = "cloud-shell-storage-centralindia"
-    storage_account_name = "csg100320035b718cb1" # Your correct storage account
-    container_name       = "tfstate"              # The container you created
+    storage_account_name = "csg100320035b718cb1"
+    container_name       = "tfstate"
     key                  = "mesh.prod.terraform.tfstate"
   }
+}
+
+# ✅ Azure DevOps Provider
+provider "azuredevops" {
+  org_service_url = var.azdo_org_service_url
+  personal_access_token = var.azdo_pat_token
+}
+
+# ✅ Azure Provider — Explicitly use pipeline SPN credentials
+provider "azurerm" {
+  features {}
+
+  subscription_id = var.subscription_id
+  tenant_id       = var.tenant_id
+  client_id       = var.client_id
+  client_secret   = var.client_secret
 }
