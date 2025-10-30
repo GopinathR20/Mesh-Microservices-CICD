@@ -7,7 +7,7 @@ trigger:
   - main
 
 variables:
-  - group: TerraformSecrets       # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc.
+  - group: TerraformSecrets        # variable group reference
   - name: azureServiceConnection
     value: 'Azure-Connection1'
   - name: acrServiceConnection
@@ -26,6 +26,7 @@ variables:
     value: 'ubuntu-latest'
   - name: TF_VERSION
     value: '1.6.0'
+
 
 # ===========================================================
 # 1️⃣ Stage: Terraform Infrastructure
