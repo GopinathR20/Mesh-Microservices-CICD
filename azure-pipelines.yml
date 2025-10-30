@@ -10,10 +10,10 @@ variables:
   - group: TerraformSecrets  # ✅ Variable group reference
 
   - name: azureServiceConnection
-    value: 'Azure-Connection1'
+    value: 'Azure-Connection final'
 
   - name: acrServiceConnection
-    value: 'ACR-Connection'
+    value: 'acr-connection-1'
 
   - name: location
     value: 'centralindia'
