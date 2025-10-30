@@ -1,6 +1,6 @@
 # ==========================================================
 # Azure Pipeline - Mesh Microservices (3 Stages)
-# Terraform + Docker + WebApp Deploy
+# Terraform + Docker + WebApp Deploy (Non-Federated)
 # ==========================================================
 
 trigger:
@@ -15,59 +15,56 @@ trigger:
 
 variables:
   # === GLOBAL VARIABLES ===
-  azureServiceConnection: 'Azure-Connection'        # Federated Azure connection
+  azureServiceConnection: 'Azure-Connection'        # ✅ Normal Service Connection
   acrServiceConnection: 'ACR-Connection'            # ACR/Docker Registry service connection
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
-  acrName: 'meshregistry6a333'                      # From Terraform output (static name)
+  acrName: 'meshregistry6a333'
   microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
   java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service'
   docker_tag: '$(Build.BuildId)'
   vmImage: 'ubuntu-latest'
-  terraformVersion: '1.6.0'
+  TF_VERSION: '1.6.0'
 
+# ==========================================================
+# 1️⃣ Stage: Terraform Infrastructure
+# ==========================================================
 stages:
-  # ==========================================================
-  # 1️⃣ Stage: Terraform Infrastructure (Federated Auth)
-  # ==========================================================
   - stage: Infra
     displayName: '1. Provision Infrastructure (Terraform)'
     jobs:
       - job: TerraformApply
-        displayName: 'Terraform Init & Apply (Federated Auth)'
+        displayName: 'Terraform Init & Apply'
         pool:
           vmImage: $(vmImage)
         steps:
           - checkout: self
 
           - task: Bash@3
-            displayName: 'Install Terraform $(terraformVersion)'
+            displayName: 'Install Terraform $(TF_VERSION)'
             inputs:
               targetType: 'inline'
               script: |
-                set -euo pipefail
-                sudo apt-get update -y && sudo apt-get install -y unzip
-                wget -q "https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip" -O terraform.zip
+                set -e
+                echo "Installing Terraform version ${TF_VERSION}"
+                sudo apt-get update -y && sudo apt-get install -y unzip wget
+                wget -q "https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip" -O terraform.zip
                 unzip -o terraform.zip
                 sudo mv terraform /usr/local/bin/
-                terraform --version
+                terraform version
 
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init & Apply using Federated Identity'
+            displayName: 'Terraform Init & Apply'
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: bash
               scriptLocation: inlineScript
               workingDirectory: 'infrastructure'
               inlineScript: |
-                set -euo pipefail
+                set -e
 
-                echo "✅ Using federated authentication context from Azure DevOps..."
-                export ARM_USE_OIDC=true
-                export ARM_CLIENT_ID=$(servicePrincipalId)
-                export ARM_TENANT_ID=$(tenantId)
-                export ARM_SUBSCRIPTION_ID=$(subscriptionId)
+                echo "✅ Logged in successfully to Azure."
 
                 echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade \
@@ -80,11 +77,17 @@ stages:
                 terraform apply -auto-approve -input=false
 
                 echo "Setting Terraform output variables..."
-                echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
-                echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
-                echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
-                echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
-                echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
+                RG_NAME=$(terraform output -raw resource_group_name)
+                ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
+                ACR_ADMIN_USER=$(terraform output -raw acr_admin_username)
+                ACR_ADMIN_PASS=$(terraform output -raw acr_admin_password)
+                COSMOS_DB_CONN_STRING=$(terraform output -raw cosmos_db_connection_string)
+
+                echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$RG_NAME"
+                echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$ACR_LOGIN_SERVER"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$ACR_ADMIN_USER"
+                echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$ACR_ADMIN_PASS"
+                echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$COSMOS_DB_CONN_STRING"
 
   # ==========================================================
   # 2️⃣ Stage: Build & Push Docker Images
@@ -152,7 +155,7 @@ stages:
                   scriptType: bash
                   scriptLocation: inlineScript
                   inlineScript: |
-                    set -euo pipefail
+                    set -e
                     APP_NAME="${{ service }}-webapp"
                     IMAGE_NAME="$(ACR_LOGIN_SERVER)/${{ service }}:$(docker_tag)"
 
@@ -167,9 +170,9 @@ stages:
                       --docker-registry-server-password "$(ACR_ADMIN_PASS)"
 
                     echo "🔧 Updating App Settings for $APP_NAME"
-                    SETTINGS=(
-                      "WEBSITES_PORT=8080"
-                      "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)"
+                    SETTINGS=( \
+                      "WEBSITES_PORT=8080" \
+                      "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)" \
                     )
 
                     if [ "${{ service }}" != "discovery-server" ]; then
