@@ -58,7 +58,7 @@ stages:
 
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init & Apply (Fixed SP Auth)'
+            displayName: 'Terraform Init & Apply (Federated Auth Fixed)'
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: 'bash'
@@ -67,11 +67,10 @@ stages:
               inlineScript: |
                 set -euo pipefail
 
-                echo "Fetching Service Principal credentials from environment..."
-                export ARM_CLIENT_ID=${servicePrincipalId:-$AZURE_CLIENT_ID}
-                export ARM_CLIENT_SECRET=${servicePrincipalKey:-$AZURE_CLIENT_SECRET}
-                export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+                echo "Fetching auth context from Azure CLI..."
+                export ARM_CLIENT_ID=$(az account show --query user.name -o tsv)
                 export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+                export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
 
                 echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade \
