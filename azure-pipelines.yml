@@ -7,7 +7,8 @@ trigger:
   - main
 
 variables:
-  - group: TerraformSecrets     # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc..
+  - group: TerraformSecrets       # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc.
+  - name: azureServiceConnection
     value: 'Azure-Connection1'
   - name: acrServiceConnection
     value: 'ACR-Connection'
@@ -34,7 +35,7 @@ stages:
     displayName: '1. Provision Infrastructure (Terraform)'
     jobs:
       - job: TerraformApply
-        name: TerraformApply         # ✅ Added job name (required for output linking)
+        name: TerraformApply
         displayName: 'Terraform Init & Apply'
         pool:
           vmImage: $(vmImage)
@@ -144,7 +145,7 @@ stages:
         pool:
           vmImage: $(vmImage)
         variables:
-          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.RG_NAME'] ]            # ✅ fixed link
+          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.RG_NAME'] ]
           ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_LOGIN_SERVER'] ]
           ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_USER'] ]
           ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_PASS'] ]
@@ -172,7 +173,7 @@ stages:
                     az webapp config container set \
                       --name "$APP_NAME" \
                       --resource-group "$(RG_NAME)" \
-                      --container-image-name "$IMAGE_NAME" \            # ✅ updated arg
+                      --container-image-name "$IMAGE_NAME" \
                       --container-registry-url "https://$(ACR_LOGIN_SERVER)" \
                       --container-registry-user "$(ACR_ADMIN_USER)" \
                       --container-registry-password "$(ACR_ADMIN_PASS)"
