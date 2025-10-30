@@ -58,7 +58,7 @@ stages:
 
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init & Apply'
+            displayName: 'Terraform Init & Apply (Fixed SP Auth)'
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: 'bash'
@@ -66,14 +66,21 @@ stages:
               workingDirectory: 'infrastructure'
               inlineScript: |
                 set -euo pipefail
-                echo "terraform init"
+
+                echo "Setting Terraform environment variables from service connection..."
+                export ARM_CLIENT_ID=$servicePrincipalId
+                export ARM_CLIENT_SECRET=$servicePrincipalKey
+                export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+                echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade \
                   -backend-config="storage_account_name=csg100320035b718cb1" \
                   -backend-config="container_name=tfstate" \
                   -backend-config="key=mesh.prod.terraform.tfstate" \
                   -backend-config="resource_group_name=cloud-shell-storage-centralindia"
 
-                echo "terraform apply"
+                echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
 
                 echo "Gathering Terraform outputs..."
