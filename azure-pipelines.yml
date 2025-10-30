@@ -12,7 +12,7 @@ trigger:
 
 variables:
   # === YOUR VARIABLES ===
-  azureServiceConnection: 'Azure-Connection' # Your verified ARM connection
+  azureServiceConnection: 'Azure-Connection'
   acrServiceConnection: 'ACR-Connection'     # Your ACR/Docker Registry connection
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
