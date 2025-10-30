@@ -1,17 +1,23 @@
-# Stage 1: Build the application using Maven
-FROM maven:3.8.5-openjdk-17 AS builder
-WORKDIR /app
-COPY pom.xml .
-RUN mvn dependency:go-offline
-COPY src ./src
-RUN mvn clean package -DskipTests
+# Stage 1: Base image
+FROM python:3.10-slim
 
-# Stage 2: Create the final, lightweight container image
-# FIX: Use the correct, maintained Alpine-based tag for JRE 17
-FROM openjdk:17-jdk-alpine
+# Set working directory
 WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
 
-# Final Fix: EXPOSE must be on its own line without inline comments
+# Copy and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the app source code
+COPY . .
+
+# Set Streamlit to listen on port 8080 for Azure Web App
+ENV PORT=8080
+ENV STREAMLIT_SERVER_PORT=8080
+ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+
+# Expose port 8080
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+
+# Run Streamlit app
+CMD ["streamlit", "run", "app.py"]
