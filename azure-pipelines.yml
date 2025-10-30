@@ -92,12 +92,14 @@ stages:
                 ACR_ADMIN_USER=$(terraform output -raw acr_admin_username)
                 ACR_ADMIN_PASS=$(terraform output -raw acr_admin_password)
                 COSMOS_DB_CONN_STRING=$(terraform output -raw cosmos_db_connection_string)
+                SUFFIX=$(terraform output -raw suffix)
 
                 echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$RG_NAME"
                 echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$ACR_LOGIN_SERVER"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$ACR_ADMIN_USER"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$ACR_ADMIN_PASS"
                 echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$COSMOS_DB_CONN_STRING"
+                echo "##vso[task.setvariable variable=SUFFIX;isOutput=true]$SUFFIX"
             env:
               ARM_CLIENT_ID: $(ARM_CLIENT_ID)
               ARM_CLIENT_SECRET: $(ARM_CLIENT_SECRET)
@@ -163,6 +165,7 @@ stages:
           ACR_ADMIN_USER: $[stageDependencies.Infra.TerraformApply.outputs['terraformApplyTask.ACR_ADMIN_USER']]
           ACR_ADMIN_PASS: $[stageDependencies.Infra.TerraformApply.outputs['terraformApplyTask.ACR_ADMIN_PASS']]
           COSMOS_DB_CONN_STRING: $[stageDependencies.Infra.TerraformApply.outputs['terraformApplyTask.COSMOS_DB_CONN_STRING']]
+          SUFFIX: $[stageDependencies.Infra.TerraformApply.outputs['terraformApplyTask.SUFFIX']]
 
         steps:
           - script: |
@@ -179,7 +182,7 @@ stages:
                   scriptLocation: inlineScript
                   inlineScript: |
                     set -e
-                    APP_NAME="${{ service }}-webapp"
+                    APP_NAME="${{ service }}-webapp-$(SUFFIX)"
                     IMAGE_NAME="$(ACR_LOGIN_SERVER)/${{ service }}:$(docker_tag)"
 
                     echo "🚀 Deploying $APP_NAME with image $IMAGE_NAME"
@@ -199,15 +202,12 @@ stages:
                     )
 
                     if [ "${{ service }}" != "discovery-server" ]; then
-                      SETTINGS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server-webapp.azurewebsites.net/eureka/")
+                      EUREKA_URL="http://discovery-server-webapp-$(SUFFIX).azurewebsites.net/eureka/"
+                      SETTINGS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=${EUREKA_URL}")
                     else
                       SETTINGS+=("EUREKA_CLIENT_REGISTERWITHEUREKA=false" "EUREKA_CLIENT_FETCHREGISTRY=false")
                     fi
-
-                    if [ "${{ service }}" == "ai-service" ]; then
-                      SETTINGS+=("GEMINI_API_KEY=$(GEMINI_API_KEY)")
-                    fi
-
+                    
                     az webapp config appsettings set \
                       --resource-group "$(RG_NAME)" \
                       --name "$APP_NAME" \

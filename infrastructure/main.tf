@@ -1,12 +1,11 @@
 # =======================
 # Random Unique Identifiers
 # =======================
-resource "random_string" "suffix" {
+resource "random_string" "rg_suffix" {
   length  = 4
   special = false
   upper   = false
 }
-
 resource "random_integer" "suffix" {
   count = 1
   min   = 10000
@@ -17,10 +16,9 @@ resource "random_integer" "suffix" {
 # Resource Group
 # =======================
 resource "azurerm_resource_group" "rg" {
-  name     = "${var.resource_group_name}-${random_string.suffix.result}"
+  name     = "${var.resource_group_name}-${random_string.rg_suffix.result}"
   location = var.location
 }
-
 # =======================
 # Azure Container Registry
 # =======================
@@ -31,7 +29,6 @@ resource "azurerm_container_registry" "acr" {
   sku                 = var.acr_sku
   admin_enabled       = true
 }
-
 # =======================
 # App Service Plan
 # =======================
@@ -53,27 +50,22 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   location            = "Central India"
   offer_type          = "Standard"
   kind                = var.cosmos_db_kind
-
   capabilities {
     name = "EnableMongo"
   }
-
   consistency_policy {
     consistency_level = "Session"
   }
-
   geo_location {
     location          = "Central India"
     failover_priority = 0
   }
 }
-
 # =======================
 # Linux Web Apps (for all microservices)
 # =======================
 resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
-
   # ✅ Unique name fix
   name                = "${each.value}-webapp-${random_integer.suffix[0].result}"
   location            = azurerm_resource_group.rg.location

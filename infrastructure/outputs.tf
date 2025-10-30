@@ -3,11 +3,14 @@
 # ==========================================================
 
 # ✅ Resource Group
+output "suffix" {
+  description = "Unique random integer suffix for resources"
+  value       = random_integer.suffix[0].result
+}
 output "resource_group_name" {
   description = "Name of the Azure Resource Group."
   value       = azurerm_resource_group.rg.name
 }
-
 # ✅ ACR Login Server (matches pipeline)
 output "container_registry_login_server" {
   description = "Login server of the Azure Container Registry."
