@@ -12,12 +12,13 @@ terraform {
     }
   }
 
-  backend "azurerm" {
-    resource_group_name  = "cloud-shell-storage-centralindia"
-    storage_account_name = "csg100320035b718cb1"
-    container_name       = "tfstate"
-    key                  = "mesh.prod.terraform.tfstate"
-  }
+  backend "local" {}
+  # backend "azurerm" {
+  #   resource_group_name  = "cloud-shell-storage-centralindia"
+  #   storage_account_name = "csg100320035b718cb1"
+  #   container_name       = "tfstate"
+  #   key                  = "mesh.prod.terraform.tfstate"
+  # }
 }
 
 provider "azurerm" {

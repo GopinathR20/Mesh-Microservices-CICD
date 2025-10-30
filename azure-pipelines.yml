@@ -74,7 +74,9 @@ stages:
                 echo "Initializing Terraform backend..."
                 echo "🧹 Cleaning up old Terraform state cache..."
                 rm -rf .terraform .terraform.lock.hcl
+                rm -f terraform.tfstate terraform.tfstate.backup
                 echo "✅ Old providers removed. Reinitializing Terraform..."
+                terraform init -reconfigure
                 terraform init -input=false -upgrade
                 
                 echo "Applying Terraform..."
