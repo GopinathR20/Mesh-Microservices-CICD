@@ -15,6 +15,7 @@ resource "random_integer" "suffix" {
   max   = 99999
 }
 
+# ✅ Azure Container Registry (used by pipeline)
 resource "azurerm_container_registry" "acr" {
   name                = lower("meshregistry${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
@@ -23,6 +24,7 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = true
 }
 
+# ✅ App Service Plan for all web apps
 resource "azurerm_service_plan" "asp" {
   name                = "mesh-asp"
   location            = azurerm_resource_group.rg.location
@@ -31,9 +33,9 @@ resource "azurerm_service_plan" "asp" {
   sku_name            = var.app_service_plan_sku
 }
 
-# Optional Cosmos DB (uses free tier if eligible)
+# ✅ Optional Cosmos DB (Mongo API)
 resource "azurerm_cosmosdb_account" "cosmos" {
-  count               = 1 # Set count = 0 to disable
+  count               = 1 # Set count = 0 to disable Cosmos
   name                = lower("mesh-cosmos-db-${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
@@ -54,11 +56,11 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   }
 }
 
-# Create Linux Web Apps for Containers (Empty Shells for Step 1)
+# ✅ Web Apps for Microservices (Empty containers, deployed later via pipeline)
 resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
 
-  name = "${each.value}-webapp-${var.build_id}-${random_integer.suffix[0].result}"
+  name                = "${each.value}-webapp"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   service_plan_id     = azurerm_service_plan.asp.id
@@ -69,5 +71,17 @@ resource "azurerm_linux_web_app" "microservices" {
 
   app_settings = {
     "WEBSITES_PORT" = "8080"
+  }
+
+  # ✅ Ensure ACR-based deployments are allowed
+  identity {
+    type = "SystemAssigned"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      app_settings, # app settings updated later by pipeline
+      site_config
+    ]
   }
 }
