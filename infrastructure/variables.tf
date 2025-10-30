@@ -5,31 +5,7 @@ variable "azdo_org_service_url" {
   default     = "https://dev.azure.com/reccloudcomputingproject"
 }
 
-variable "azdo_pat_token" {
-  description = "Azure DevOps Personal Access Token (for azuredevops provider.)"
-  type        = string
-  sensitive   = true
-}
-
 # --- Azure SPN Auth (used in provider azurerm) ---
-variable "subscription_id" {
-  type        = string
-  description = "Azure subscription ID"
-}
-variable "tenant_id" {
-  type        = string
-  description = "Azure tenant ID"
-}
-variable "client_id" {
-  type        = string
-  description = "Service Principal client ID"
-}
-variable "client_secret" {
-  type        = string
-  sensitive   = true
-  description = "Service Principal client secret"
-}
-
 # --- Azure Resource Variables ---
 variable "resource_group_name" {
   description = "Name for the Azure resource group."
