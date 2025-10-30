@@ -46,7 +46,6 @@ stages:
     displayName: '1. Provision Infrastructure (Terraform)'
     jobs:
       - job: TerraformApply
-        name: TerraformApply
         displayName: 'Terraform Init & Apply'
         pool:
           vmImage: $(vmImage)
