@@ -10,7 +10,7 @@ trigger:
 # Global Variables + Linked Secrets
 # -----------------------------------------------------------
 variables:
-  - group: TerraformSecrets     # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc.
+  - group: TerraformSecrets     # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc..
   - name: azureServiceConnection
     value: 'Azure-Connection1'
   - name: acrServiceConnection
