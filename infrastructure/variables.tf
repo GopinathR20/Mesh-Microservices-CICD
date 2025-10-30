@@ -3,6 +3,10 @@ variable "resource_group_name" {
   description = "Name for the Azure resource group."
   type        = string
 }
+variable "build_id" {
+  type    = string
+  default = "00000"
+}
 
 variable "location" {
   description = "Azure region for deployment."
