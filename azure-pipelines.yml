@@ -1,4 +1,7 @@
-# azure-pipelines.yml (Root Level - 3 Stage)
+# ==========================================================
+# Azure Pipeline - Mesh Microservices (3 Stages)
+# Terraform + Docker + WebApp Deploy
+# ==========================================================
 
 trigger:
   branches:
@@ -6,33 +9,32 @@ trigger:
       - main
   paths:
     include:
-      - 'Mesh-Microservices/*' # Trigger on code change
-      - 'pom.xml'            # Trigger on parent pom change
-      - 'infrastructure/*'     # Trigger on terraform change
+      - 'Mesh-Microservices/*'
+      - 'pom.xml'
+      - 'infrastructure/*'
 
 variables:
-  # === YOUR VARIABLES ===
-  azureServiceConnection: 'Azure-Connection'
-  acrServiceConnection: 'ACR-Connection'     # Your ACR/Docker Registry connection
+  # === GLOBAL VARIABLES ===
+  azureServiceConnection: 'Azure-Connection'        # Federated Azure connection
+  acrServiceConnection: 'ACR-Connection'            # ACR/Docker Registry service connection
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
-  # HARDCODED: Use the name 'meshregistry' + the 5 char hash from your TF output
-  acrName: 'meshregistry6a333'
+  acrName: 'meshregistry6a333'                      # From Terraform output (static name)
   microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
-  java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service' # Excludes non-java 'ai-service'
+  java_service_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service'
   docker_tag: '$(Build.BuildId)'
   vmImage: 'ubuntu-latest'
   terraformVersion: '1.6.0'
 
 stages:
   # ==========================================================
-  # Stage 1: Provision Infrastructure (Terraform)
+  # 1️⃣ Stage: Terraform Infrastructure (Federated Auth)
   # ==========================================================
   - stage: Infra
-    displayName: '1. Provision Infrastructure'
+    displayName: '1. Provision Infrastructure (Terraform)'
     jobs:
       - job: TerraformApply
-        displayName: 'Terraform Init & Apply'
+        displayName: 'Terraform Init & Apply (Federated Auth)'
         pool:
           vmImage: $(vmImage)
         steps:
@@ -44,33 +46,28 @@ stages:
               targetType: 'inline'
               script: |
                 set -euo pipefail
-                echo "Installing unzip..."
-                sudo apt-get update -y
-                sudo apt-get install -y unzip
-
-                TFV=$(terraformVersion)
-                echo "Downloading terraform ${TFV}..."
-                cd /tmp
-                wget -q "https://releases.hashicorp.com/terraform/${TFV}/terraform_${TFV}_linux_amd64.zip" -O terraform.zip
+                sudo apt-get update -y && sudo apt-get install -y unzip
+                wget -q "https://releases.hashicorp.com/terraform/${terraformVersion}/terraform_${terraformVersion}_linux_amd64.zip" -O terraform.zip
                 unzip -o terraform.zip
                 sudo mv terraform /usr/local/bin/
                 terraform --version
 
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init & Apply (Federated Auth Fixed)'
+            displayName: 'Terraform Init & Apply using Federated Identity'
             inputs:
               azureSubscription: $(azureServiceConnection)
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
+              scriptType: bash
+              scriptLocation: inlineScript
               workingDirectory: 'infrastructure'
               inlineScript: |
                 set -euo pipefail
 
-                echo "Fetching auth context from Azure CLI..."
-                export ARM_CLIENT_ID=$(az account show --query user.name -o tsv)
-                export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-                export ARM_TENANT_ID=$(az account show --query tenantId -o tsv)
+                echo "✅ Using federated authentication context from Azure DevOps..."
+                export ARM_USE_OIDC=true
+                export ARM_CLIENT_ID=$(servicePrincipalId)
+                export ARM_TENANT_ID=$(tenantId)
+                export ARM_SUBSCRIPTION_ID=$(subscriptionId)
 
                 echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade \
@@ -82,7 +79,7 @@ stages:
                 echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
 
-                echo "Gathering Terraform outputs..."
+                echo "Setting Terraform output variables..."
                 echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
                 echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
@@ -90,7 +87,7 @@ stages:
                 echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
 
   # ==========================================================
-  # Stage 2: Build & Push All Docker Images
+  # 2️⃣ Stage: Build & Push Docker Images
   # ==========================================================
   - stage: Build
     displayName: '2. Build & Push Docker Images'
@@ -105,94 +102,87 @@ stages:
           - checkout: self
 
           - task: Maven@3
-            displayName: 'Build All Java Modules (Maven)'
+            displayName: 'Build All Java Modules'
             inputs:
-              mavenPomFile: 'pom.xml' # Root pom.xml
+              mavenPomFile: 'pom.xml'
               goals: 'package'
               options: '-DskipTests'
               jdkVersionOption: '1.17'
               jdkArchitectureOption: 'x64'
 
-          # Loop through each service and build/push its Docker image
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
                 inputs:
                   command: 'buildAndPush'
                   containerRegistry: $(acrServiceConnection)
-                  repository: '${{ service }}' # Image name, e.g., 'user-service'
-                  dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile' # Correct path
-                  buildContext: 'Mesh-Microservices/${{ service }}' # Correct context
+                  repository: '${{ service }}'
+                  dockerfile: 'Mesh-Microservices/${{ service }}/Dockerfile'
+                  buildContext: 'Mesh-Microservices/${{ service }}'
                   tags: |
                     $(docker_tag)
                     latest
 
   # ==========================================================
-  # Stage 3: Deploy ALL Containers to WebApps
+  # 3️⃣ Stage: Deploy Containers to WebApps
   # ==========================================================
   - stage: Deploy
     displayName: '3. Deploy Containers to WebApps'
     dependsOn:
-      - Build
       - Infra
+      - Build
     condition: succeeded('Build')
     jobs:
       - job: DeployJob
-        displayName: 'Deploy All Services'
+        displayName: 'Deploy All Microservices'
         pool:
           vmImage: $(vmImage)
         variables:
-          # Get all output variables from the Terraform stage
           RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.RG_NAME'] ]
           ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_LOGIN_SERVER'] ]
           ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_USER'] ]
           ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.ACR_ADMIN_PASS'] ]
           COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['setOutputs.COSMOS_DB_CONN_STRING'] ]
         steps:
-          # Loop through each service and deploy it
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: AzureCLI@2
                 displayName: 'Deploy: ${{ service }}'
                 inputs:
                   azureSubscription: $(azureServiceConnection)
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
+                  scriptType: bash
+                  scriptLocation: inlineScript
                   inlineScript: |
                     set -euo pipefail
                     APP_NAME="${{ service }}-webapp"
                     IMAGE_NAME="$(ACR_LOGIN_SERVER)/${{ service }}:$(docker_tag)"
-                    
-                    echo "Updating Container Image for $APP_NAME..."
+
+                    echo "🚀 Deploying $APP_NAME with image $IMAGE_NAME"
+
                     az webapp config container set \
-                      --name $APP_NAME \
-                      --resource-group $(RG_NAME) \
-                      --docker-custom-image-name $IMAGE_NAME \
-                      --docker-registry-server-url https://$(ACR_LOGIN_SERVER) \
-                      --docker-registry-server-user $(ACR_ADMIN_USER) \
-                      --docker-registry-server-password $(ACR_ADMIN_PASS)
-                    
-                    echo "Updating App Settings for $APP_NAME..."
-                    # Base settings for all apps
+                      --name "$APP_NAME" \
+                      --resource-group "$(RG_NAME)" \
+                      --docker-custom-image-name "$IMAGE_NAME" \
+                      --docker-registry-server-url "https://$(ACR_LOGIN_SERVER)" \
+                      --docker-registry-server-user "$(ACR_ADMIN_USER)" \
+                      --docker-registry-server-password "$(ACR_ADMIN_PASS)"
+
+                    echo "🔧 Updating App Settings for $APP_NAME"
                     SETTINGS=(
                       "WEBSITES_PORT=8080"
-                      "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)" 
+                      "SPRING_DATA_MONGODB_URI=$(COSMOS_DB_CONN_STRING)"
                     )
-                    
-                    # Add Eureka URL for all services except discovery-server itself
+
                     if [ "${{ service }}" != "discovery-server" ]; then
                       SETTINGS+=("EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-server-webapp.azurewebsites.net/eureka/")
                     else
                       SETTINGS+=("EUREKA_CLIENT_REGISTERWITHEUREKA=false" "EUREKA_CLIENT_FETCHREGISTRY=false")
                     fi
-                    
-                    # Add AI service specific settings
+
                     if [ "${{ service }}" == "ai-service" ]; then
-                      # Assumes GEMINI_API_KEY is in a Variable Group linked to the pipeline
-                      SETTINGS+=("GEMINI_API_KEY=$(GEMINI_API_KEY)") 
+                      SETTINGS+=("GEMINI_API_KEY=$(GEMINI_API_KEY)")
                     fi
-                    
-                    # Add settings to Web App
+
                     az webapp config appsettings set \
-                      --resource-group $(RG_NAME) \
-                      --name $APP_NAME \
+                      --resource-group "$(RG_NAME)" \
+                      --name "$APP_NAME" \
                       --settings "${SETTINGS[@]}"
