@@ -19,7 +19,7 @@ trigger:
 variables:
   - group: TerraformSecrets     # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc.
   - name: azureServiceConnection
-    value: 'Azure-Connection'
+    value: 'Azure-Connection1'
   - name: acrServiceConnection
     value: 'ACR-Connection'
   - name: location
