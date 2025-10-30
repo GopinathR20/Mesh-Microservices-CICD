@@ -47,7 +47,7 @@ stages:
                 echo "Installing unzip..."
                 sudo apt-get update -y
                 sudo apt-get install -y unzip
-                
+
                 TFV=$(terraformVersion)
                 echo "Downloading terraform ${TFV}..."
                 cd /tmp
@@ -63,31 +63,25 @@ stages:
               azureSubscription: $(azureServiceConnection)
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
-              workingDirectory: 'infrastructure' # Run in the infra folder
+              workingDirectory: 'infrastructure'
               inlineScript: |
                 set -euo pipefail
                 echo "terraform init"
-                # Init with backend config
                 terraform init -input=false -upgrade \
                   -backend-config="storage_account_name=csg100320035b718cb1" \
                   -backend-config="container_name=tfstate" \
                   -backend-config="key=mesh.prod.terraform.tfstate" \
                   -backend-config="resource_group_name=cloud-shell-storage-centralindia"
-                
+
                 echo "terraform apply"
                 terraform apply -auto-approve -input=false
-                
+
                 echo "Gathering Terraform outputs..."
                 echo "##vso[task.setvariable variable=RG_NAME;isOutput=true]$(terraform output -raw resource_group_name)"
                 echo "##vso[task.setvariable variable=ACR_LOGIN_SERVER;isOutput=true]$(terraform output -raw acr_login_server)"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_USER;isOutput=true]$(terraform output -raw acr_admin_username)"
                 echo "##vso[task.setvariable variable=ACR_ADMIN_PASS;isOutput=true]$(terraform output -raw acr_admin_password)"
                 echo "##vso[task.setvariable variable=COSMOS_DB_CONN_STRING;isOutput=true]$(terraform output -raw cosmos_db_connection_string)"
-            env:
-              ARM_CLIENT_ID: $(servicePrincipalId)
-              ARM_CLIENT_SECRET: $(servicePrincipalKey)
-              ARM_SUBSCRIPTION_ID: $(subscriptionId)
-              ARM_TENANT_ID: $(tenantId)
 
   # ==========================================================
   # Stage 2: Build & Push All Docker Images
