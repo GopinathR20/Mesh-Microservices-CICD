@@ -28,15 +28,9 @@ terraform {
 # ✅ Azure DevOps Provider
 provider "azuredevops" {
   org_service_url = var.azdo_org_service_url
-  personal_access_token = var.azdo_pat_token
 }
 
 # ✅ Azure Provider — Explicitly use pipeline SPN credentials
 provider "azurerm" {
   features {}
-
-  subscription_id = var.subscription_id
-  tenant_id       = var.tenant_id
-  client_id       = var.client_id
-  client_secret   = var.client_secret
 }
