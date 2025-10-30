@@ -80,7 +80,7 @@ stages:
                 terraform init -input=false -upgrade
                 
                 echo "Applying Terraform..."
-                terraform apply -auto-approve -input=false
+                terraform apply -auto-approve -input=false -var="resource_group_name=mesh-project-rg-$(Build.BuildId)"
                 
                 echo "Fetching output variables..."
                 RG_NAME=$(terraform output -raw resource_group_name)

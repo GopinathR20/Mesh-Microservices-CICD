@@ -2,7 +2,6 @@
 variable "resource_group_name" {
   description = "Name for the Azure resource group."
   type        = string
-  default     = "mesh-project-rg"
 }
 
 variable "location" {
