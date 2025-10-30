@@ -37,7 +37,6 @@ variables:
     value: '1.6.0'
 
 
-
 # ===========================================================
 # 1️⃣ Stage: Terraform Infrastructure
 # ==========================================================
@@ -104,6 +103,7 @@ stages:
               ARM_TENANT_ID: $(ARM_TENANT_ID)
               ARM_SUBSCRIPTION_ID: $(ARM_SUBSCRIPTION_ID)
 
+
   # ==========================================================
   # 2️⃣ Stage: Build & Push Docker Images
   # ==========================================================
@@ -139,6 +139,7 @@ stages:
                   tags: |
                     $(docker_tag)
                     latest
+  
 
   # ==========================================================
   # 3️⃣ Stage: Deploy Containers to WebApps
@@ -155,11 +156,13 @@ stages:
         pool:
           vmImage: $(vmImage)
         variables:
-          RG_NAME: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.RG_NAME'] ]
-          ACR_LOGIN_SERVER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_LOGIN_SERVER'] ]
-          ACR_ADMIN_USER: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_USER'] ]
+          # ✅ Use Terraform outputs if available; fallback to defaults
+          RG_NAME: $[ coalesce(stageDependencies.Infra.TerraformApply.outputs['TerraformApply.RG_NAME'], 'mesh-project-rg') ]
+          ACR_LOGIN_SERVER: $[ coalesce(stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_LOGIN_SERVER'], 'meshregistry6a333.azurecr.io') ]
+          ACR_ADMIN_USER: $[ coalesce(stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_USER'], 'meshregistry6a333') ]
           ACR_ADMIN_PASS: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.ACR_ADMIN_PASS'] ]
           COSMOS_DB_CONN_STRING: $[ stageDependencies.Infra.TerraformApply.outputs['TerraformApply.COSMOS_DB_CONN_STRING'] ]
+
         steps:
           - script: |
               echo "DEBUG: RG_NAME=$(RG_NAME)"
