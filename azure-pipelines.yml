@@ -17,16 +17,25 @@ trigger:
 # Global Variables + Linked Secrets
 # ----------------------------------------------------------
 variables:
-  - group: TerraformSecrets     # Contains ARM_*, GEMINI_API_KEY, etc.
-  azureServiceConnection: 'Azure-Connection'
-  acrServiceConnection: 'ACR-Connection'
-  location: 'centralindia'
-  resourceGroup: 'mesh-project-rg'
-  acrName: 'meshregistry6a333'
-  microservice_list: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
-  docker_tag: '$(Build.BuildId)'
-  vmImage: 'ubuntu-latest'
-  TF_VERSION: '1.6.0'
+  - group: TerraformSecrets     # ✅ Variable group: ARM_*, GEMINI_API_KEY, etc.
+  - name: azureServiceConnection
+    value: 'Azure-Connection'
+  - name: acrServiceConnection
+    value: 'ACR-Connection'
+  - name: location
+    value: 'centralindia'
+  - name: resourceGroup
+    value: 'mesh-project-rg'
+  - name: acrName
+    value: 'meshregistry6a333'
+  - name: microservice_list
+    value: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
+  - name: docker_tag
+    value: '$(Build.BuildId)'
+  - name: vmImage
+    value: 'ubuntu-latest'
+  - name: TF_VERSION
+    value: '1.6.0'
 
 # ==========================================================
 # 1️⃣ Stage: Terraform Infrastructure
@@ -62,13 +71,17 @@ stages:
               script: |
                 set -e
                 cd infrastructure
+                
                 echo "✅ Setting Service Principal environment for Terraform..."
                 export ARM_CLIENT_ID=$(ARM_CLIENT_ID)
                 export ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET)
                 export ARM_TENANT_ID=$(ARM_TENANT_ID)
                 export ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID)
                 
+                echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade
+                
+                echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
                 
                 echo "Fetching output variables..."
@@ -112,7 +125,6 @@ stages:
               options: '-DskipTests'
               jdkVersionOption: '1.17'
 
-          # Build each service in loop
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
