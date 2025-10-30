@@ -72,6 +72,9 @@ stages:
                 export ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID)
                 
                 echo "Initializing Terraform backend..."
+                echo "🧹 Cleaning up old Terraform state cache..."
+                rm -rf .terraform .terraform.lock.hcl
+                echo "✅ Old providers removed. Reinitializing Terraform..."
                 terraform init -input=false -upgrade
                 
                 echo "Applying Terraform..."
