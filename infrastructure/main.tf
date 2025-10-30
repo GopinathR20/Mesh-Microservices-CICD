@@ -1,12 +1,10 @@
+# =======================
+# Random Unique Identifiers
+# =======================
 resource "random_string" "suffix" {
   length  = 4
   special = false
   upper   = false
-}
-
-resource "azurerm_resource_group" "rg" {
-  name     = "${var.resource_group_name}-${random_string.suffix.result}"
-  location = var.location
 }
 
 resource "random_integer" "suffix" {
@@ -15,7 +13,17 @@ resource "random_integer" "suffix" {
   max   = 99999
 }
 
-# ✅ Azure Container Registry (used by pipeline)
+# =======================
+# Resource Group
+# =======================
+resource "azurerm_resource_group" "rg" {
+  name     = "${var.resource_group_name}-${random_string.suffix.result}"
+  location = var.location
+}
+
+# =======================
+# Azure Container Registry
+# =======================
 resource "azurerm_container_registry" "acr" {
   name                = lower("meshregistry${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
@@ -24,7 +32,9 @@ resource "azurerm_container_registry" "acr" {
   admin_enabled       = true
 }
 
-# ✅ App Service Plan for all web apps
+# =======================
+# App Service Plan
+# =======================
 resource "azurerm_service_plan" "asp" {
   name                = "mesh-asp"
   location            = azurerm_resource_group.rg.location
@@ -33,9 +43,11 @@ resource "azurerm_service_plan" "asp" {
   sku_name            = var.app_service_plan_sku
 }
 
-# ✅ Optional Cosmos DB (Mongo API)
+# =======================
+# Cosmos DB (Mongo API)
+# =======================
 resource "azurerm_cosmosdb_account" "cosmos" {
-  count               = 1 # Set count = 0 to disable Cosmos
+  count               = 1
   name                = lower("mesh-cosmos-db-${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
@@ -56,31 +68,33 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   }
 }
 
-# ✅ Web Apps for Microservices (Empty containers, deployed later via pipeline)
+# =======================
+# Linux Web Apps (for all microservices)
+# =======================
 resource "azurerm_linux_web_app" "microservices" {
   for_each = toset(var.microservices)
 
-  name                = "${each.value}-webapp"
+  # ✅ Unique name fix
+  name                = "${each.value}-webapp-${random_integer.suffix[0].result}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   service_plan_id     = azurerm_service_plan.asp.id
 
   site_config {
-    always_on = false # Free tier does not support Always On
+    always_on = false
   }
 
   app_settings = {
     "WEBSITES_PORT" = "8080"
   }
 
-  # ✅ Ensure ACR-based deployments are allowed
   identity {
     type = "SystemAssigned"
   }
 
   lifecycle {
     ignore_changes = [
-      app_settings, # app settings updated later by pipeline
+      app_settings,
       site_config
     ]
   }
