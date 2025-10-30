@@ -8,7 +8,7 @@ RUN mvn clean package -DskipTests
 
 # Stage 2: Create the final, lightweight container image
 # FIX: Use the correct, maintained Alpine-based tag for JRE 17
-FROM openjdk:17-jdk-alpine
+FROM mcr.microsoft.com/openjdk/jdk:17-alpine
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
 
