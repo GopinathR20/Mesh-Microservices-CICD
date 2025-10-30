@@ -65,21 +65,4 @@ resource "azurerm_linux_web_app" "microservices" {
   }
 }
 
-# Azure DevOps Project Data Source
-data "azuredevops_project" "project" {
-  name = var.azdo_project_name
-}
 
-# Azure DevOps Pipeline (Single Definition)
-resource "azuredevops_build_definition" "main_ci_cd_pipeline" {
-  project_id = data.azuredevops_project.project.id
-  name       = "Mesh Microservices CI-CD (Web Apps)"
-
-  repository {
-    repo_type             = "GitHub"
-    repo_id               = var.github_repo_id
-    branch_name           = var.github_branch_name
-    service_connection_id = var.github_connection_id
-    yml_path              = "azure-pipelines.yml" # Root pipeline file
-  }
-}
