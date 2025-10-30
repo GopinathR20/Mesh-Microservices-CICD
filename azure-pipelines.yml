@@ -17,9 +17,7 @@ trigger:
 # Global Variables + Linked Secrets
 # ----------------------------------------------------------
 variables:
-  - group: TerraformSecrets     # ✅ Variable Group with ARM_CLIENT_ID, ARM_CLIENT_SECRET, ARM_TENANT_ID, ARM_SUBSCRIPTION_ID, AZDO_PAT_TOKEN
-
-  # Static project values
+  - group: TerraformSecrets     # Contains ARM_*, GEMINI_API_KEY, etc.
   azureServiceConnection: 'Azure-Connection'
   acrServiceConnection: 'ACR-Connection'
   location: 'centralindia'
@@ -44,7 +42,6 @@ stages:
         steps:
           - checkout: self
 
-          # Install Terraform
           - task: Bash@3
             displayName: 'Install Terraform $(TF_VERSION)'
             inputs:
@@ -58,7 +55,6 @@ stages:
                 sudo mv terraform /usr/local/bin/
                 terraform version
 
-          # Terraform Init + Apply (Service Principal Auth)
           - task: Bash@3
             displayName: 'Terraform Init & Apply'
             inputs:
@@ -66,17 +62,13 @@ stages:
               script: |
                 set -e
                 cd infrastructure
-                
                 echo "✅ Setting Service Principal environment for Terraform..."
                 export ARM_CLIENT_ID=$(ARM_CLIENT_ID)
                 export ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET)
                 export ARM_TENANT_ID=$(ARM_TENANT_ID)
                 export ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID)
                 
-                echo "Initializing Terraform backend..."
                 terraform init -input=false -upgrade
-                
-                echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
                 
                 echo "Fetching output variables..."
@@ -112,7 +104,6 @@ stages:
         steps:
           - checkout: self
 
-          # Build all Java microservices
           - task: Maven@3
             displayName: 'Build All Java Modules'
             inputs:
@@ -121,7 +112,7 @@ stages:
               options: '-DskipTests'
               jdkVersionOption: '1.17'
 
-          # Build & Push each microservice image
+          # Build each service in loop
           - ${{ each service in split(variables.microservice_list, ',') }}:
               - task: Docker@2
                 displayName: 'Build & Push: ${{ service }}'
