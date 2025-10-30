@@ -15,8 +15,8 @@ trigger:
 
 variables:
   # === GLOBAL VARIABLES ===
-  azureServiceConnection: 'Azure-Connection'        # ✅ Normal Service Connection
-  acrServiceConnection: 'ACR-Connection'            # ACR/Docker Registry service connection
+  azureServiceConnection: 'Azure-Connection'        # ✅ Normal Service Connection (Service Principal)
+  acrServiceConnection: 'ACR-Connection'            # ✅ Your ACR service connection
   location: 'centralindia'
   resourceGroup: 'mesh-project-rg'
   acrName: 'meshregistry6a333'
@@ -53,18 +53,20 @@ stages:
                 sudo mv terraform /usr/local/bin/
                 terraform version
 
+          # ✅ FIXED: Use environment variables from Service Connection directly (No az login)
           - task: AzureCLI@2
             name: setOutputs
-            displayName: 'Terraform Init & Apply (Service Principal Auth)'
+            displayName: 'Terraform Init & Apply (Direct Service Principal Auth)'
             inputs:
               azureSubscription: $(azureServiceConnection)
               scriptType: bash
               scriptLocation: inlineScript
               workingDirectory: 'infrastructure'
+              addSpnToEnvironment: true
               inlineScript: |
                 set -e
 
-                echo "✅ Setting up Service Principal credentials for Terraform..."
+                echo "✅ Using Service Principal credentials for Terraform..."
                 export ARM_CLIENT_ID=$servicePrincipalId
                 export ARM_TENANT_ID=$tenantId
                 export ARM_SUBSCRIPTION_ID=$subscriptionId
@@ -80,7 +82,7 @@ stages:
                 echo "Applying Terraform..."
                 terraform apply -auto-approve -input=false
 
-                echo "Setting Terraform output variables..."
+                echo "Extracting Terraform outputs..."
                 RG_NAME=$(terraform output -raw resource_group_name)
                 ACR_LOGIN_SERVER=$(terraform output -raw acr_login_server)
                 ACR_ADMIN_USER=$(terraform output -raw acr_admin_username)
