@@ -5,7 +5,7 @@ COPY pom.xml .
 COPY src ./src
 RUN mvn clean package -DskipTests
 
-# Stage 2: Create lightweight runtime image
+# Stage 2: Create lightweight runtime imagess
 FROM mcr.microsoft.com/openjdk/jdk:17-ubuntu
 WORKDIR /app
 COPY --from=builder /app/target/*.jar app.jar
