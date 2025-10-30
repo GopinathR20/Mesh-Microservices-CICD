@@ -11,7 +11,7 @@ variable "build_id" {
 variable "location" {
   description = "Azure region for deployment."
   type        = string
-  default     = "South India"
+  default     = "Central India"
 }
 
 variable "acr_sku" {

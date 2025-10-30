@@ -50,7 +50,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   count               = 1
   name                = lower("mesh-cosmos-db-${random_integer.suffix[0].result}")
   resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
+  location            = "Central India"
   offer_type          = "Standard"
   kind                = var.cosmos_db_kind
 
@@ -63,7 +63,7 @@ resource "azurerm_cosmosdb_account" "cosmos" {
   }
 
   geo_location {
-    location          = azurerm_resource_group.rg.location
+    location          = "Central India"
     failover_priority = 0
   }
 }
