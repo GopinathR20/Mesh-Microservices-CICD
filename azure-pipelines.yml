@@ -7,25 +7,35 @@ trigger:
   - main
 
 variables:
-  - group: TerraformSecrets        # variable group reference
+  - group: TerraformSecrets  # ✅ Variable group reference
+
   - name: azureServiceConnection
     value: 'Azure-Connection1'
+
   - name: acrServiceConnection
     value: 'ACR-Connection'
+
   - name: location
     value: 'centralindia'
+
   - name: resourceGroup
     value: 'mesh-project-rg'
+
   - name: acrName
     value: 'meshregistry6a333'
+
   - name: microservice_list
     value: 'api-gateway,admin-service,classroom-service,discovery-server,user-service,ai-service'
+
   - name: docker_tag
     value: '$(Build.BuildId)'
+
   - name: vmImage
     value: 'ubuntu-latest'
+
   - name: TF_VERSION
     value: '1.6.0'
+
 
 
 # ===========================================================
